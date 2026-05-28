@@ -1,13 +1,13 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>译 · Select-translation — 在任何应用里，选中即译</title>
-<meta name="description" content="一个轻量的桌面划词翻译工具（Windows / macOS）：选中文本，光标旁浮起蓝色「译」圆点，点击即用大模型流式翻译。接入 DeepSeek / 通义千问 / 智谱 / Kimi / OpenAI / Ollama 等任意 OpenAI 兼容服务。">
+<title>译 · Select-translation — Translate anywhere, just by selecting</title>
+<meta name="description" content="A lightweight inline-translation desktop tool (Windows / macOS): select text and a blue 译 dot floats up by your cursor — click it for a streamed LLM translation. Plug in DeepSeek / Qwen / Zhipu / Kimi / OpenAI / Ollama — any OpenAI-compatible service.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400;1,9..144,500&family=Hanken+Grotesk:wght@400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400;1,9..144,500&family=Hanken+Grotesk:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@300;400;500;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
   :root{
     --paper:#FBF8F1;
@@ -34,7 +34,6 @@
     overflow-x:hidden;
     position:relative;
   }
-  /* 颗粒噪点叠层，给纸面质感 */
   body::before{
     content:"";position:fixed;inset:0;z-index:9999;pointer-events:none;opacity:.04;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
@@ -62,24 +61,32 @@
     display:grid;place-items:center;font-size:14px;font-weight:700;
     box-shadow:0 4px 14px var(--blue-glow);}
   .brand small{font-family:"Space Mono",monospace;font-weight:400;color:var(--ink-3);font-size:12.5px;letter-spacing:.02em;}
-  .navlinks{display:flex;gap:30px;align-items:center;font-size:14.5px;}
+  .navlinks{display:flex;gap:28px;align-items:center;font-size:14.5px;}
   .navlinks a{color:var(--ink-2);transition:color .2s;}
   .navlinks a:hover{color:var(--blue-deep);}
   .navlinks .gh{color:var(--ink);font-weight:600;}
   @media(max-width:720px){.navlinks a:not(.gh){display:none;}}
+
+  /* language toggle */
+  .langtoggle{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;
+    font-family:"Space Mono",monospace;font-size:12px;background:var(--white);}
+  .langtoggle span{padding:5px 11px;cursor:pointer;color:var(--ink-3);transition:.18s;user-select:none;letter-spacing:.02em;}
+  .langtoggle span.on{background:var(--ink);color:var(--paper);}
 
   /* ---------- HERO ---------- */
   header{position:relative;padding:96px 0 60px;}
   .hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center;}
   @media(max-width:920px){.hero-grid{grid-template-columns:1fr;gap:44px;}}
 
-  h1{font-family:"Noto Sans SC",sans-serif;font-weight:900;
-    font-size:clamp(40px,6.4vw,76px);line-height:1.02;letter-spacing:-.01em;margin:22px 0 0;}
+  h1{font-family:"Hanken Grotesk","Noto Sans SC",sans-serif;font-weight:800;
+    font-size:clamp(40px,6.2vw,74px);line-height:1.03;letter-spacing:-.015em;margin:22px 0 0;}
+  html[lang="zh-CN"] h1{font-family:"Noto Sans SC",sans-serif;font-weight:900;letter-spacing:-.01em;}
   h1 .l2{display:block;}
   h1 mark{background:linear-gradient(transparent 12%, var(--blue-soft) 12% 88%, transparent 88%);padding:0 .12em;}
   .hero-sub{font-family:"Fraunces",serif;font-style:italic;font-weight:400;
     font-size:clamp(19px,2.4vw,26px);color:var(--blue-deep);margin-top:18px;letter-spacing:.01em;}
-  .hero-p{font-size:17px;color:var(--ink-2);max-width:30em;margin-top:18px;}
+  html[lang="zh-CN"] .hero-sub{font-family:"Noto Sans SC",sans-serif;font-style:normal;font-weight:500;}
+  .hero-p{font-size:17px;color:var(--ink-2);max-width:32em;margin-top:18px;}
   .cta{display:flex;gap:14px;margin-top:34px;flex-wrap:wrap;}
   .btn{display:inline-flex;align-items:center;gap:9px;padding:14px 24px;border-radius:11px;
     font-weight:600;font-size:15px;transition:transform .18s,box-shadow .18s,background .18s;cursor:pointer;border:none;}
@@ -90,7 +97,6 @@
   .hero-note{margin-top:24px;font-size:13.5px;color:var(--ink-3);}
   .hero-note b{color:var(--ink-2);font-weight:600;}
 
-  /* hero 右侧：一个微缩"应用窗口"静态预览 */
   .preview{background:var(--white);border:1px solid var(--line);border-radius:16px;overflow:hidden;
     box-shadow:0 30px 60px -24px rgba(22,19,15,.30),0 6px 14px rgba(22,19,15,.05);
     transform:rotate(-1.2deg);}
@@ -114,8 +120,9 @@
   /* ---------- SECTION SHELL ---------- */
   section{padding:84px 0;position:relative;}
   .sec-head{max-width:46em;margin-bottom:48px;}
-  .sec-head h2{font-family:"Noto Sans SC",sans-serif;font-weight:900;
-    font-size:clamp(28px,3.6vw,42px);line-height:1.12;letter-spacing:-.01em;margin-top:16px;}
+  .sec-head h2{font-family:"Hanken Grotesk","Noto Sans SC",sans-serif;font-weight:800;
+    font-size:clamp(28px,3.6vw,42px);line-height:1.14;letter-spacing:-.01em;margin-top:16px;}
+  html[lang="zh-CN"] .sec-head h2{font-family:"Noto Sans SC",sans-serif;font-weight:900;}
   .sec-head p{color:var(--ink-2);font-size:16.5px;margin-top:14px;max-width:34em;}
 
   /* ---------- DEMO ---------- */
@@ -129,7 +136,7 @@
   .demo-window .bar i:nth-child(2){background:#f3cf8e;}
   .demo-window .bar i:nth-child(3){background:#a9d6a0;}
   .demo-window .bar span{margin-left:12px;font-family:"Space Mono",monospace;font-size:12.5px;color:var(--ink-3);}
-  #demoText{padding:40px 40px 46px;font-family:"Fraunces",serif;font-size:clamp(20px,2.6vw,27px);
+  #demoText{padding:40px 40px 46px;font-family:"Fraunces","Noto Sans SC",serif;font-size:clamp(20px,2.6vw,27px);
     line-height:1.7;color:var(--ink);cursor:text;}
   #demoText .sent{transition:background .2s;}
   @media(max-width:560px){#demoText{padding:28px 24px 32px;}}
@@ -139,7 +146,6 @@
     border-radius:6px;padding:2px 8px;background:#fff;color:var(--ink-2);}
   .demo-cap{text-align:center;margin-top:14px;font-size:13px;color:var(--ink-3);}
 
-  /* 浮动圆点 + 气泡（演示用，fixed 跟随选区） */
   #floatDot{position:fixed;z-index:300;width:28px;height:28px;border-radius:50%;background:var(--blue);
     color:#fff;display:none;place-items:center;font-size:14px;font-weight:700;cursor:pointer;
     box-shadow:0 6px 18px var(--blue-glow);animation:pop .22s cubic-bezier(.2,1.4,.4,1);}
@@ -182,23 +188,25 @@
   .prov{background:var(--ink);color:var(--paper);border-radius:22px;padding:54px 44px;}
   .prov .kicker{color:#9db8ff;}
   .prov .kicker::before{background:#9db8ff;}
-  .prov h2{font-family:"Noto Sans SC",sans-serif;font-weight:900;font-size:clamp(24px,3vw,34px);
+  .prov h2{font-family:"Hanken Grotesk","Noto Sans SC",sans-serif;font-weight:800;font-size:clamp(24px,3vw,34px);
     margin-top:16px;line-height:1.2;}
+  html[lang="zh-CN"] .prov h2{font-family:"Noto Sans SC",sans-serif;font-weight:900;}
   .prov h2 .em{font-family:"Fraunces",serif;font-style:italic;font-weight:400;color:#9db8ff;}
   .chips{display:flex;flex-wrap:wrap;gap:11px;margin-top:30px;}
   .chip{border:1px solid rgba(251,248,241,.22);border-radius:999px;padding:9px 18px;font-size:14px;
     font-family:"Space Mono",monospace;letter-spacing:.01em;transition:.2s;}
   .chip:hover{background:rgba(157,184,255,.16);border-color:#9db8ff;}
   .chip.lead{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:700;}
-  .prov .foot{margin-top:26px;color:#b9b3a6;font-size:14px;max-width:38em;}
+  .prov .foot{margin-top:26px;color:#b9b3a6;font-size:14px;max-width:40em;}
   .prov .foot b{color:#fff;}
 
   /* ---------- INSTALL ---------- */
   .install{text-align:center;}
-  .install h2{font-family:"Noto Sans SC",sans-serif;font-weight:900;font-size:clamp(30px,4vw,48px);letter-spacing:-.01em;}
+  .install h2{font-family:"Hanken Grotesk","Noto Sans SC",sans-serif;font-weight:800;font-size:clamp(30px,4vw,48px);letter-spacing:-.015em;}
+  html[lang="zh-CN"] .install h2{font-family:"Noto Sans SC",sans-serif;font-weight:900;}
   .install h2 .b{color:var(--blue);}
   .install p{color:var(--ink-2);margin-top:14px;font-size:16.5px;}
-  .codebox{position:relative;max-width:620px;margin:36px auto 0;text-align:left;
+  .codebox{position:relative;max-width:640px;margin:36px auto 0;text-align:left;
     background:var(--ink);color:#ede7da;border-radius:14px;padding:24px 22px;
     font-family:"Space Mono",monospace;font-size:14px;line-height:2;
     box-shadow:0 30px 60px -26px rgba(22,19,15,.4);overflow-x:auto;}
@@ -215,12 +223,10 @@
   /* ---------- FOOTER ---------- */
   footer{border-top:1px solid var(--line);padding:48px 0 60px;margin-top:30px;}
   footer .wrap{display:flex;justify-content:space-between;align-items:flex-start;gap:30px;flex-wrap:wrap;}
-  footer .brand{margin-bottom:0;}
-  footer p{color:var(--ink-3);font-size:13.5px;max-width:30em;margin-top:14px;}
+  footer p{color:var(--ink-3);font-size:13.5px;max-width:32em;margin-top:14px;}
   footer .fl{display:flex;gap:26px;font-size:14px;color:var(--ink-2);}
   footer .fl a:hover{color:var(--blue-deep);}
 
-  /* reveal */
   .reveal{opacity:0;transform:translateY(22px);transition:opacity .7s ease,transform .7s ease;}
   .reveal.in{opacity:1;transform:none;}
   @media(prefers-reduced-motion:reduce){
@@ -234,12 +240,13 @@
 
 <nav>
   <div class="wrap">
-    <a class="brand" href="#top"><span class="gldot">译</span>Select-translation <small>/ 划词翻译</small></a>
+    <a class="brand" href="#top"><span class="gldot">译</span>Select-translation <small data-i18n="brandSub">/ inline translate</small></a>
     <div class="navlinks">
-      <a href="#demo">演示</a>
-      <a href="#features">特性</a>
-      <a href="#how">怎么用</a>
+      <a href="#demo" data-i18n="navDemo">Demo</a>
+      <a href="#features" data-i18n="navFeatures">Features</a>
+      <a href="#how" data-i18n="navHow">How</a>
       <a class="gh" href="https://github.com/horton2048/Select-translation" target="_blank" rel="noopener">GitHub ↗</a>
+      <span class="langtoggle" id="langToggle"><span data-l="en">EN</span><span data-l="zh">中文</span></span>
     </div>
   </div>
 </nav>
@@ -247,25 +254,24 @@
 <header id="top">
   <div class="wrap hero-grid">
     <div>
-      <span class="kicker reveal">Windows · macOS · 开源</span>
-      <h1 class="reveal" style="transition-delay:.06s">在任何应用里，<span class="l2"><mark>选中</mark>即译。</span></h1>
-      <p class="hero-sub reveal" style="transition-delay:.12s">Select anything, translate instantly.</p>
-      <p class="hero-p reveal" style="transition-delay:.18s">浏览器、PDF、IDE、聊天窗口——拖选一段文字，光标旁浮起一个蓝色「译」圆点。点它，大模型把译文逐字流式蹦出来。不用切窗口，不用按快捷键。</p>
+      <span class="kicker reveal" data-i18n="heroKicker">Windows · macOS · Open source</span>
+      <h1 class="reveal" style="transition-delay:.06s" data-i18n="heroH1">Translate anywhere,<span class="l2">just by <mark>selecting</mark>.</span></h1>
+      <p class="hero-sub reveal" style="transition-delay:.12s" data-i18n="heroSub">Read foreign text like it's your own.</p>
+      <p class="hero-p reveal" style="transition-delay:.18s" data-i18n="heroP">In your browser, a PDF, your IDE, a chat window — select any text and a blue 译 dot floats up beside your cursor. Click it, and a large language model streams the translation out, word by word. No window-switching, no hotkeys.</p>
       <div class="cta reveal" style="transition-delay:.24s">
-        <a class="btn btn-primary" href="https://github.com/horton2048/Select-translation" target="_blank" rel="noopener">在 GitHub 安装 ↗</a>
-        <a class="btn btn-ghost" href="#demo">↓ 先试试效果</a>
+        <a class="btn btn-primary" href="https://github.com/horton2048/Select-translation" target="_blank" rel="noopener" data-i18n="heroBtnInstall">Install from GitHub ↗</a>
+        <a class="btn btn-ghost" href="#demo" data-i18n="heroBtnDemo">↓ Try it first</a>
       </div>
-      <p class="hero-note reveal" style="transition-delay:.3s">接入 <b>DeepSeek · 通义千问 · 智谱 · Kimi · OpenAI · Ollama</b> 等任意 OpenAI 兼容服务。</p>
+      <p class="hero-note reveal" style="transition-delay:.3s" data-i18n="heroNote">Plug in <b>DeepSeek · Qwen · Zhipu · Kimi · OpenAI · Ollama</b> — any OpenAI-compatible service.</p>
     </div>
 
     <div class="reveal" style="transition-delay:.2s">
       <div class="preview">
         <div class="bar"><i></i><i></i><i></i><span>an-article.com</span></div>
         <div class="body">
-          Reading in a foreign language is slow. You hit a sentence, lose the thread, and
-          reach for a dictionary. <span class="hl">What if translation lived right where your cursor is?</span>
+          <span id="pvText"></span>
           <span class="pv-dot" style="right:30px;top:78px;">译</span>
-          <div class="pv-bubble" style="right:18px;top:118px;">如果翻译就在你光标所在的地方呢？</div>
+          <div class="pv-bubble" id="pvBubble" style="right:18px;top:118px;"></div>
         </div>
       </div>
     </div>
@@ -275,24 +281,16 @@
 <section class="demo" id="demo">
   <div class="wrap">
     <div class="sec-head reveal" style="text-align:center;margin:0 auto 40px;">
-      <span class="kicker" style="justify-content:center;">实时演示 · TRY IT</span>
-      <h2>不用安装，先在这页上试一下。</h2>
+      <span class="kicker" style="justify-content:center;" data-i18n="demoKicker">Live demo · TRY IT</span>
+      <h2 data-i18n="demoH2">No install needed — try it right on this page.</h2>
     </div>
     <div class="demo-stage reveal">
       <div class="demo-window">
-        <div class="bar"><i></i><i></i><i></i><span>demo — 选中下面任意一句</span></div>
-        <p id="demoText">
-          <span class="sent" data-zh="好奇心是一切成就的引擎。">Curiosity is the engine of every achievement.</span>
-          <span class="sent" data-zh="你停止发问的那一刻，就是你停止成长的那一刻。">The moment you stop asking questions is the moment you stop growing.</span>
-          <span class="sent" data-zh="广泛阅读，自由划选，让思想跨越语言的边界。">Read widely, select freely, and let ideas cross the borders of language.</span>
-        </p>
+        <div class="bar"><i></i><i></i><i></i><span data-i18n="demoBar">demo — select any line below</span></div>
+        <p id="demoText"></p>
       </div>
-      <div class="demo-hint">
-        <span>👆 用鼠标拖选上面任意一句英文</span>
-        <span>→ 点蓝色圆点</span>
-        <span class="key">Esc 关闭气泡</span>
-      </div>
-      <p class="demo-cap">这就是装好之后，在你<b>任何应用</b>里的样子。</p>
+      <div class="demo-hint" data-i18n="demoHint">👆 Drag-select any line above <span>→ click the blue dot</span> <span class="key">Esc to close</span></div>
+      <p class="demo-cap" data-i18n="demoCap">This is exactly how it feels inside <b>any app</b> once installed.</p>
     </div>
   </div>
 </section>
@@ -300,40 +298,40 @@
 <section id="features">
   <div class="wrap">
     <div class="sec-head reveal">
-      <span class="kicker">为什么顺手</span>
-      <h2>小到一个圆点，<br>但每个细节都为"不打断你"而设计。</h2>
-      <p>它不抢你的剪贴板、不占你的窗口，只在你需要的那一秒出现。</p>
+      <span class="kicker" data-i18n="featKicker">Why it feels right</span>
+      <h2 data-i18n="featH2">Just a small dot —<br>but every detail is built to not interrupt you.</h2>
+      <p data-i18n="featP">It won't hijack your clipboard or steal your window. It shows up only for the second you need it.</p>
     </div>
     <div class="feat-grid">
       <div class="feat reveal">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="2.5" y="9.5" width="12" height="5" rx="1"/><path d="M19 5v14M16.5 5h5M16.5 19h5"/></svg>
-        <h3>全局划词</h3>
-        <p>浏览器、PDF 阅读器、IDE、记事本、聊天软件——任何应用里拖选都能触发。</p>
+        <h3 data-i18n="f1t">Select anywhere</h3>
+        <p data-i18n="f1d">Browsers, PDF readers, IDEs, notes apps, chat windows — drag-select in any app and it triggers.</p>
       </div>
       <div class="feat reveal" style="transition-delay:.05s">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 7h16M4 12h11M4 17h14"/><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg>
-        <h3>流式译文</h3>
-        <p>token 实时追加渲染，第一个字几乎瞬间出现，不用盯着转圈干等。</p>
+        <h3 data-i18n="f2t">Streamed output</h3>
+        <p data-i18n="f2d">Tokens render as they arrive — the first word shows almost instantly, no spinner-staring.</p>
       </div>
       <div class="feat reveal" style="transition-delay:.1s">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="3" fill="currentColor" stroke="none"/><path d="M13 13l7 7M13 13v6M13 13h6"/></svg>
-        <h3>跟随光标的圆点</h3>
-        <p>有道词典 / Bob 那种顺手：圆点贴着选区出现，约 2 秒自动隐去，不点就走。</p>
+        <h3 data-i18n="f3t">A dot by your cursor</h3>
+        <p data-i18n="f3d">Youdao Dict / Bob-style: the dot hugs your selection and fades after ~2s if you don't click.</p>
       </div>
       <div class="feat reveal">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/><path d="M9.5 3v3M14.5 3v3M9.5 18v3M14.5 18v3M3 9.5h3M3 14.5h3M18 9.5h3M18 14.5h3"/></svg>
-        <h3>任意大模型</h3>
-        <p>OpenAI 兼容协议，换服务商只改 Base URL 和模型名。默认 MiniMax-M2.1。</p>
+        <h3 data-i18n="f4t">Any LLM</h3>
+        <p data-i18n="f4d">OpenAI-compatible protocol — switch providers by editing one Base URL and model name. Defaults to MiniMax-M2.1.</p>
       </div>
       <div class="feat reveal" style="transition-delay:.05s">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3" y="7.5" width="12" height="9" rx="1.5"/><rect x="9" y="3.5" width="12" height="9" rx="1.5"/></svg>
-        <h3>Windows + macOS</h3>
-        <p>同一套代码、同一种体验。平台差异只隔离在一个文件里，行为完全对齐。</p>
+        <h3 data-i18n="f5t">Windows + macOS</h3>
+        <p data-i18n="f5d">One codebase, one experience. Platform differences are isolated in a single file; behavior is identical.</p>
       </div>
       <div class="feat reveal" style="transition-delay:.1s">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 6h18"/><circle cx="17" cy="6" r="1.4" fill="currentColor" stroke="none"/><rect x="5" y="11" width="14" height="9" rx="1.5"/></svg>
-        <h3>常驻托盘</h3>
-        <p>菜单栏 / 系统托盘一键暂停、设置、退出。配置存在本地 <span class="mono" style="font-size:13px;">~/.translate-popup</span>。</p>
+        <h3 data-i18n="f6t">Lives in the tray</h3>
+        <p data-i18n="f6d">Pause, settings, quit — one click from the menu bar / system tray. Config stays local in <span class="mono" style="font-size:13px;">~/.translate-popup</span>.</p>
       </div>
     </div>
   </div>
@@ -342,13 +340,13 @@
 <section id="how" style="background:var(--paper-2);border-top:1px solid var(--line);border-bottom:1px solid var(--line);">
   <div class="wrap">
     <div class="sec-head reveal">
-      <span class="kicker">三步</span>
-      <h2>从选中到译文，<br>一次顺滑的手势。</h2>
+      <span class="kicker" data-i18n="howKicker">Three steps</span>
+      <h2 data-i18n="howH2">From selection to translation,<br>one smooth gesture.</h2>
     </div>
     <div class="steps">
-      <div class="step reveal"><div class="n">01</div><h3>选中</h3><p>拖选任意一段文本。单击不会触发——避免误判，也不打断你正常复制。</p></div>
-      <div class="step reveal" style="transition-delay:.08s"><div class="n">02</div><h3>出现「译」</h3><p>光标右上角浮起蓝色小圆点，大约 2 秒后自动隐去；移上去它会留下来等你。</p></div>
-      <div class="step reveal" style="transition-delay:.16s"><div class="n">03</div><h3>点击翻译</h3><p>弹出卡片，流式渲染译文。<span class="mono" style="font-size:13px;">Esc</span> 关闭，也能一键复制结果。</p></div>
+      <div class="step reveal"><div class="n">01</div><h3 data-i18n="s1t">Select</h3><p data-i18n="s1d">Drag-select any text. A single click won't trigger it — no false positives, no interrupting your normal copy.</p></div>
+      <div class="step reveal" style="transition-delay:.08s"><div class="n">02</div><h3 data-i18n="s2t">The 译 dot appears</h3><p data-i18n="s2d">A blue dot floats at the top-right of your cursor and quietly fades after ~2s; hover it and it waits for you.</p></div>
+      <div class="step reveal" style="transition-delay:.16s"><div class="n">03</div><h3 data-i18n="s3t">Click to translate</h3><p data-i18n="s3d">A card pops up and streams the translation. <span class="mono" style="font-size:13px;">Esc</span> to close, or copy the result with one click.</p></div>
     </div>
   </div>
 </section>
@@ -356,39 +354,39 @@
 <section>
   <div class="wrap">
     <div class="prov reveal">
-      <span class="kicker">你的模型，你做主</span>
-      <h2>插上任意 <span class="em">OpenAI-compatible</span> 服务就能跑。</h2>
+      <span class="kicker" data-i18n="provKicker">Your model, your call</span>
+      <h2 data-i18n="provH2">Plug in any <span class="em">OpenAI-compatible</span> service and go.</h2>
       <div class="chips">
         <span class="chip lead">MiniMax-M2.1</span>
         <span class="chip">DeepSeek</span>
-        <span class="chip">通义千问 · DashScope</span>
-        <span class="chip">智谱 GLM</span>
+        <span class="chip" data-i18n="chipQwen">Qwen · DashScope</span>
+        <span class="chip" data-i18n="chipZhipu">Zhipu GLM</span>
         <span class="chip">Moonshot Kimi</span>
         <span class="chip">OpenAI</span>
-        <span class="chip">Ollama 本地</span>
+        <span class="chip" data-i18n="chipOllama">Ollama (local)</span>
       </div>
-      <p class="foot"><b>中英自动反向：</b>选中中文译成英文，选中英文译成中文。预设里切换服务商会自动填好 Base URL 和模型名，填上 API Key 即用。</p>
+      <p class="foot" data-i18n="provFoot"><b>Auto bi-directional:</b> select Chinese and it goes to English, select English and it goes to Chinese. Picking a provider preset auto-fills the Base URL and model name — just add your API key.</p>
     </div>
   </div>
 </section>
 
 <section class="install" id="install">
   <div class="wrap">
-    <span class="kicker reveal" style="justify-content:center;">安装</span>
-    <h2 class="reveal" style="transition-delay:.05s">几行命令，<span class="b">装到你的电脑。</span></h2>
-    <p class="reveal" style="transition-delay:.1s">需要 Python 3。克隆仓库、装依赖、跑起来——就这样。</p>
+    <span class="kicker reveal" style="justify-content:center;" data-i18n="installKicker">Install</span>
+    <h2 class="reveal" style="transition-delay:.05s" data-i18n="installH2">A few commands,<span class="b"> and it's on your machine.</span></h2>
+    <p class="reveal" style="transition-delay:.1s" data-i18n="installP">Requires Python 3. Clone, install deps, run — that's it.</p>
     <div class="codebox reveal" style="transition-delay:.14s">
-      <button class="copybtn" id="copyBtn">复制</button>
+      <button class="copybtn" id="copyBtn" data-i18n="copyBtn">Copy</button>
       <div class="ln"><span class="p">$ </span><span class="c">git clone</span> https://github.com/horton2048/Select-translation.git</div>
       <div class="ln"><span class="p">$ </span><span class="c">cd</span> Select-translation</div>
       <div class="ln"><span class="p">$ </span>pip install -r requirements.txt</div>
       <div class="ln"><span class="p">$ </span>python main.py</div>
     </div>
     <div class="cta reveal" style="transition-delay:.18s">
-      <a class="btn btn-primary" href="https://github.com/horton2048/Select-translation" target="_blank" rel="noopener">在 GitHub 打开 ↗</a>
-      <a class="btn btn-ghost" href="https://github.com/horton2048/Select-translation#readme" target="_blank" rel="noopener">阅读文档</a>
+      <a class="btn btn-primary" href="https://github.com/horton2048/Select-translation" target="_blank" rel="noopener" data-i18n="installBtnOpen">Open on GitHub ↗</a>
+      <a class="btn btn-ghost" href="https://github.com/horton2048/Select-translation#readme" target="_blank" rel="noopener" data-i18n="installBtnDocs">Read the docs</a>
     </div>
-    <p class="mac-note reveal" style="transition-delay:.22s">macOS 首次需在 <b>系统设置 → 隐私与安全性 → 辅助功能 / 输入监控</b> 里授权后重启。</p>
+    <p class="mac-note reveal" style="transition-delay:.22s" data-i18n="installMac">On macOS, first grant access under <b>System Settings → Privacy &amp; Security → Accessibility / Input Monitoring</b>, then restart.</p>
   </div>
 </section>
 
@@ -396,43 +394,138 @@
   <div class="wrap">
     <div>
       <a class="brand" href="#top"><span class="gldot">译</span>Select-translation</a>
-      <p>一个轻量的桌面划词翻译工具。灵感对标 openai-translator，交互更接近网易有道词典 / Bob：选中 → 光标旁出圆点 → 点击翻译。</p>
+      <p data-i18n="footTagline">A lightweight inline-translation desktop tool. Inspired by openai-translator, with an interaction closer to Youdao Dict / Bob: select → a dot appears by the cursor → click to translate.</p>
     </div>
     <div class="fl">
       <a href="https://github.com/horton2048/Select-translation" target="_blank" rel="noopener">GitHub ↗</a>
-      <a href="https://github.com/horton2048/Select-translation#readme" target="_blank" rel="noopener">文档</a>
-      <a href="#top">回到顶部</a>
+      <a href="https://github.com/horton2048/Select-translation#readme" target="_blank" rel="noopener" data-i18n="footDocs">Docs</a>
+      <a href="#top" data-i18n="footTop">Back to top</a>
     </div>
   </div>
 </footer>
 
-<!-- 演示用浮动圆点 + 气泡 -->
 <div id="floatDot">译</div>
 <div id="floatBubble"></div>
 
 <script>
 (function(){
-  // ---- 滚动入场 ----
-  var io=new IntersectionObserver(function(es){
-    es.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
-  },{threshold:.12});
-  document.querySelectorAll('.reveal').forEach(function(el){ io.observe(el); });
+  // ---------- i18n ----------
+  var I18N={
+    en:{
+      _title:"译 · Select-translation — Translate anywhere, just by selecting",
+      brandSub:"/ inline translate",
+      navDemo:"Demo", navFeatures:"Features", navHow:"How",
+      heroKicker:"Windows · macOS · Open source",
+      heroH1:'Translate anywhere,<span class="l2">just by <mark>selecting</mark>.</span>',
+      heroSub:"Read foreign text like it's your own.",
+      heroP:"In your browser, a PDF, your IDE, a chat window — select any text and a blue 译 dot floats up beside your cursor. Click it, and a large language model streams the translation out, word by word. No window-switching, no hotkeys.",
+      heroBtnInstall:"Install from GitHub ↗",
+      heroBtnDemo:"↓ Try it first",
+      heroNote:'Plug in <b>DeepSeek · Qwen · Zhipu · Kimi · OpenAI · Ollama</b> — any OpenAI-compatible service.',
+      demoKicker:"Live demo · TRY IT",
+      demoH2:"No install needed — try it right on this page.",
+      demoBar:"demo — select any line below",
+      demoHint:'👆 Drag-select any line above <span>→ click the blue dot</span> <span class="key">Esc to close</span>',
+      demoCap:"This is exactly how it feels inside <b>any app</b> once installed.",
+      featKicker:"Why it feels right",
+      featH2:"Just a small dot —<br>but every detail is built to not interrupt you.",
+      featP:"It won't hijack your clipboard or steal your window. It shows up only for the second you need it.",
+      f1t:"Select anywhere", f1d:"Browsers, PDF readers, IDEs, notes apps, chat windows — drag-select in any app and it triggers.",
+      f2t:"Streamed output", f2d:"Tokens render as they arrive — the first word shows almost instantly, no spinner-staring.",
+      f3t:"A dot by your cursor", f3d:"Youdao Dict / Bob-style: the dot hugs your selection and fades after ~2s if you don't click.",
+      f4t:"Any LLM", f4d:"OpenAI-compatible protocol — switch providers by editing one Base URL and model name. Defaults to MiniMax-M2.1.",
+      f5t:"Windows + macOS", f5d:"One codebase, one experience. Platform differences are isolated in a single file; behavior is identical.",
+      f6t:"Lives in the tray", f6d:'Pause, settings, quit — one click from the menu bar / system tray. Config stays local in <span class="mono" style="font-size:13px;">~/.translate-popup</span>.',
+      howKicker:"Three steps",
+      howH2:"From selection to translation,<br>one smooth gesture.",
+      s1t:"Select", s1d:"Drag-select any text. A single click won't trigger it — no false positives, no interrupting your normal copy.",
+      s2t:"The 译 dot appears", s2d:"A blue dot floats at the top-right of your cursor and quietly fades after ~2s; hover it and it waits for you.",
+      s3t:"Click to translate", s3d:'A card pops up and streams the translation. <span class="mono" style="font-size:13px;">Esc</span> to close, or copy the result with one click.',
+      provKicker:"Your model, your call",
+      provH2:'Plug in any <span class="em">OpenAI-compatible</span> service and go.',
+      chipQwen:"Qwen · DashScope", chipZhipu:"Zhipu GLM", chipOllama:"Ollama (local)",
+      provFoot:'<b>Auto bi-directional:</b> select Chinese and it goes to English, select English and it goes to Chinese. Picking a provider preset auto-fills the Base URL and model name — just add your API key.',
+      installKicker:"Install",
+      installH2:'A few commands,<span class="b"> and it\'s on your machine.</span>',
+      installP:"Requires Python 3. Clone, install deps, run — that's it.",
+      copyBtn:"Copy",
+      installBtnOpen:"Open on GitHub ↗", installBtnDocs:"Read the docs",
+      installMac:'On macOS, first grant access under <b>System Settings → Privacy &amp; Security → Accessibility / Input Monitoring</b>, then restart.',
+      footTagline:"A lightweight inline-translation desktop tool. Inspired by openai-translator, with an interaction closer to Youdao Dict / Bob: select → a dot appears by the cursor → click to translate.",
+      footDocs:"Docs", footTop:"Back to top",
+      copied:"Copied ✓", copyfail:"Copy failed"
+    },
+    zh:{
+      _title:"译 · Select-translation — 在任何应用里，选中即译",
+      brandSub:"/ 划词翻译",
+      navDemo:"演示", navFeatures:"特性", navHow:"怎么用",
+      heroKicker:"Windows · macOS · 开源",
+      heroH1:'在任何应用里，<span class="l2"><mark>选中</mark>即译。</span>',
+      heroSub:"选中，就有译文。",
+      heroP:"浏览器、PDF、IDE、聊天窗口——拖选一段文字，光标旁浮起一个蓝色「译」圆点。点它，大模型把译文逐字流式蹦出来。不用切窗口，不用按快捷键。",
+      heroBtnInstall:"在 GitHub 安装 ↗",
+      heroBtnDemo:"↓ 先试试效果",
+      heroNote:'接入 <b>DeepSeek · 通义千问 · 智谱 · Kimi · OpenAI · Ollama</b> 等任意 OpenAI 兼容服务。',
+      demoKicker:"实时演示 · TRY IT",
+      demoH2:"不用安装，先在这页上试一下。",
+      demoBar:"demo — 选中下面任意一句",
+      demoHint:'👆 用鼠标拖选上面任意一句 <span>→ 点蓝色圆点</span> <span class="key">Esc 关闭气泡</span>',
+      demoCap:"这就是装好之后，在你<b>任何应用</b>里的样子。",
+      featKicker:"为什么顺手",
+      featH2:'小到一个圆点，<br>但每个细节都为"不打断你"而设计。',
+      featP:"它不抢你的剪贴板、不占你的窗口，只在你需要的那一秒出现。",
+      f1t:"全局划词", f1d:"浏览器、PDF 阅读器、IDE、记事本、聊天软件——任何应用里拖选都能触发。",
+      f2t:"流式译文", f2d:"token 实时追加渲染，第一个字几乎瞬间出现，不用盯着转圈干等。",
+      f3t:"跟随光标的圆点", f3d:"有道词典 / Bob 那种顺手：圆点贴着选区出现，约 2 秒自动隐去，不点就走。",
+      f4t:"任意大模型", f4d:"OpenAI 兼容协议，换服务商只改 Base URL 和模型名。默认 MiniMax-M2.1。",
+      f5t:"Windows + macOS", f5d:"同一套代码、同一种体验。平台差异只隔离在一个文件里，行为完全对齐。",
+      f6t:"常驻托盘", f6d:'菜单栏 / 系统托盘一键暂停、设置、退出。配置存在本地 <span class="mono" style="font-size:13px;">~/.translate-popup</span>。',
+      howKicker:"三步",
+      howH2:"从选中到译文，<br>一次顺滑的手势。",
+      s1t:"选中", s1d:"拖选任意一段文本。单击不会触发——避免误判，也不打断你正常复制。",
+      s2t:"出现「译」", s2d:"光标右上角浮起蓝色小圆点，大约 2 秒后自动隐去；移上去它会留下来等你。",
+      s3t:"点击翻译", s3d:'弹出卡片，流式渲染译文。<span class="mono" style="font-size:13px;">Esc</span> 关闭，也能一键复制结果。',
+      provKicker:"你的模型，你做主",
+      provH2:'插上任意 <span class="em">OpenAI-compatible</span> 服务就能跑。',
+      chipQwen:"通义千问 · DashScope", chipZhipu:"智谱 GLM", chipOllama:"Ollama 本地",
+      provFoot:'<b>中英自动反向：</b>选中中文译成英文，选中英文译成中文。预设里切换服务商会自动填好 Base URL 和模型名，填上 API Key 即用。',
+      installKicker:"安装",
+      installH2:'几行命令，<span class="b">装到你的电脑。</span>',
+      installP:"需要 Python 3。克隆仓库、装依赖、跑起来——就这样。",
+      copyBtn:"复制",
+      installBtnOpen:"在 GitHub 打开 ↗", installBtnDocs:"阅读文档",
+      installMac:'macOS 首次需在 <b>系统设置 → 隐私与安全性 → 辅助功能 / 输入监控</b> 里授权后重启。',
+      footTagline:"一个轻量的桌面划词翻译工具。灵感对标 openai-translator，交互更接近网易有道词典 / Bob：选中 → 光标旁出圆点 → 点击翻译。",
+      footDocs:"文档", footTop:"回到顶部",
+      copied:"已复制 ✓", copyfail:"复制失败"
+    }
+  };
 
-  // ---- 复制安装命令 ----
-  var copyBtn=document.getElementById('copyBtn');
-  var cmd='git clone https://github.com/horton2048/Select-translation.git\ncd Select-translation\npip install -r requirements.txt\npython main.py';
-  copyBtn.addEventListener('click',function(){
-    navigator.clipboard.writeText(cmd).then(function(){
-      copyBtn.textContent='已复制 ✓';
-      setTimeout(function(){ copyBtn.textContent='复制'; },1600);
-    }).catch(function(){ copyBtn.textContent='复制失败'; });
-  });
+  // 演示句子：翻译"成"当前界面语言。en 界面 → 中译英；zh 界面 → 英译中。
+  var DEMO={
+    en:[
+      {src:"好奇心是一切成就的引擎。", dst:"Curiosity is the engine of every achievement."},
+      {src:"你停止发问的那一刻，就是你停止成长的那一刻。", dst:"The moment you stop asking questions is the moment you stop growing."},
+      {src:"广泛阅读，自由划选，让思想跨越语言的边界。", dst:"Read widely, select freely, and let ideas cross the borders of language."}
+    ],
+    zh:[
+      {src:"Curiosity is the engine of every achievement.", dst:"好奇心是一切成就的引擎。"},
+      {src:"The moment you stop asking questions is the moment you stop growing.", dst:"你停止发问的那一刻，就是你停止成长的那一刻。"},
+      {src:"Read widely, select freely, and let ideas cross the borders of language.", dst:"广泛阅读，自由划选，让思想跨越语言的边界。"}
+    ]
+  };
+  var PREVIEW={
+    en:{ html:'用外语阅读很慢。你卡在一个句子上，丢了线索，又伸手去翻字典。<span class="hl">要是翻译就在你光标所在的地方呢？</span>', bubble:"What if translation lived right where your cursor is?" },
+    zh:{ html:'Reading in a foreign language is slow. You hit a sentence, lose the thread, and reach for a dictionary. <span class="hl">What if translation lived right where your cursor is?</span>', bubble:"如果翻译就在你光标所在的地方呢？" }
+  };
 
-  // ---- 交互式划词演示 ----
   var demoText=document.getElementById('demoText');
   var dot=document.getElementById('floatDot');
   var bubble=document.getElementById('floatBubble');
-  var pendingZh='';
+  var pvText=document.getElementById('pvText');
+  var pvBubble=document.getElementById('pvBubble');
+  var currentLang='en';
+  var pendingDst='';
   var streamTimer=null;
 
   function hideAll(){
@@ -441,17 +534,64 @@
     if(streamTimer){ clearInterval(streamTimer); streamTimer=null; }
   }
 
-  function sentenceZhFromSelection(sel){
+  function esc(s){ return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+  function renderDemo(lang){
+    demoText.innerHTML = DEMO[lang].map(function(s){
+      return '<span class="sent" data-dst="'+esc(s.dst)+'">'+s.src+'</span>';
+    }).join(' ');
+  }
+
+  function applyLang(lang){
+    currentLang=lang;
+    document.documentElement.lang = (lang==='zh'?'zh-CN':'en');
+    var dict=I18N[lang];
+    document.querySelectorAll('[data-i18n]').forEach(function(el){
+      var k=el.getAttribute('data-i18n');
+      if(dict[k]!==undefined) el.innerHTML=dict[k];
+    });
+    document.title=dict._title;
+    renderDemo(lang);
+    pvText.innerHTML=PREVIEW[lang].html;
+    pvBubble.textContent=PREVIEW[lang].bubble;
+    document.querySelectorAll('#langToggle [data-l]').forEach(function(s){
+      s.classList.toggle('on', s.getAttribute('data-l')===lang);
+    });
+    hideAll();
+    try{ localStorage.setItem('st-lang',lang); }catch(e){}
+  }
+
+  document.querySelectorAll('#langToggle [data-l]').forEach(function(s){
+    s.addEventListener('click',function(){ applyLang(s.getAttribute('data-l')); });
+  });
+
+  // ---------- 滚动入场 ----------
+  var io=new IntersectionObserver(function(es){
+    es.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
+  },{threshold:.12});
+  document.querySelectorAll('.reveal').forEach(function(el){ io.observe(el); });
+
+  // ---------- 复制安装命令 ----------
+  var copyBtn=document.getElementById('copyBtn');
+  var cmd='git clone https://github.com/horton2048/Select-translation.git\ncd Select-translation\npip install -r requirements.txt\npython main.py';
+  copyBtn.addEventListener('click',function(){
+    navigator.clipboard.writeText(cmd).then(function(){
+      copyBtn.textContent=I18N[currentLang].copied;
+      setTimeout(function(){ copyBtn.textContent=I18N[currentLang].copyBtn; },1600);
+    }).catch(function(){ copyBtn.textContent=I18N[currentLang].copyfail; });
+  });
+
+  // ---------- 交互式划词演示 ----------
+  function dstFromSelection(sel){
     var node=sel.anchorNode;
     while(node && node!==demoText){
-      if(node.nodeType===1 && node.classList && node.classList.contains('sent')) return node.getAttribute('data-zh');
+      if(node.nodeType===1 && node.classList && node.classList.contains('sent')) return node.getAttribute('data-dst');
       node=node.parentNode;
     }
-    // 跨句选择：取与选区文本重叠最多的句子
     var txt=sel.toString().trim(), best=null, bestLen=0;
     demoText.querySelectorAll('.sent').forEach(function(s){
-      var en=s.textContent.trim();
-      if(en.indexOf(txt)>=0 || txt.indexOf(en)>=0){ if(en.length>bestLen){ bestLen=en.length; best=s.getAttribute('data-zh'); } }
+      var src=s.textContent.trim();
+      if(src.indexOf(txt)>=0 || txt.indexOf(src)>=0){ if(src.length>bestLen){ bestLen=src.length; best=s.getAttribute('data-dst'); } }
     });
     return best;
   }
@@ -461,12 +601,11 @@
       var sel=window.getSelection();
       if(!sel || sel.isCollapsed){ return; }
       var txt=sel.toString().trim();
-      if(txt.length<2){ hideAll(); return; }
-      var zh=sentenceZhFromSelection(sel);
-      if(!zh){ hideAll(); return; }
-      pendingZh=zh;
+      if(txt.length<1){ hideAll(); return; }
+      var dst=dstFromSelection(sel);
+      if(!dst){ hideAll(); return; }
+      pendingDst=dst;
       var rect=sel.getRangeAt(0).getBoundingClientRect();
-      // 圆点贴选区右上角
       dot.style.left=(rect.right+4)+'px';
       dot.style.top=(rect.top-32)+'px';
       dot.style.display='grid';
@@ -484,8 +623,7 @@
     bubble.innerHTML='<span class="dots3"><b></b><b></b><b></b></span>';
     bubble.style.display='block';
     dot.style.display='none';
-    // 模拟流式逐字输出
-    var i=0, chars=Array.from(pendingZh);
+    var i=0, chars=Array.from(pendingDst);
     if(streamTimer) clearInterval(streamTimer);
     setTimeout(function(){
       bubble.innerHTML='<span id="streamOut"></span><span class="caret"></span>';
@@ -493,7 +631,7 @@
       streamTimer=setInterval(function(){
         if(i>=chars.length){
           clearInterval(streamTimer); streamTimer=null;
-          bubble.innerHTML='<span>'+pendingZh+'</span>';
+          bubble.innerHTML='<span>'+pendingDst+'</span>';
           return;
         }
         out.textContent+=chars[i++];
@@ -501,13 +639,17 @@
     },420);
   });
 
-  // 点别处 / 滚动 / Esc 关闭
   document.addEventListener('mousedown',function(e){
     if(e.target===dot || bubble.contains(e.target) || demoText.contains(e.target)) return;
     hideAll();
   });
   window.addEventListener('scroll',hideAll,{passive:true});
   document.addEventListener('keydown',function(e){ if(e.key==='Escape') hideAll(); });
+
+  // ---------- 初始化：默认英文，记住用户选择 ----------
+  var saved=null;
+  try{ saved=localStorage.getItem('st-lang'); }catch(e){}
+  applyLang(saved==='zh'?'zh':'en');
 })();
 </script>
 </body>
