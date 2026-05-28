@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>译 · Select-translation — 在任何应用里，选中即译</title>
+<meta name="description" content="一个轻量的桌面划词翻译工具（Windows / macOS）：选中文本，光标旁浮起蓝色「译」圆点，点击即用大模型流式翻译。接入 DeepSeek / 通义千问 / 智谱 / Kimi / OpenAI / Ollama 等任意 OpenAI 兼容服务。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400;1,9..144,500&family=Hanken+Grotesk:wght@400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#FBF8F1;
+    --paper-2:#F3EEE3;
+    --ink:#16130F;
+    --ink-2:#574F45;
+    --ink-3:#8C8475;
+    --blue:#3B82F6;
+    --blue-deep:#1D4ED8;
+    --blue-soft:rgba(59,130,246,.16);
+    --blue-glow:rgba(59,130,246,.45);
+    --line:rgba(22,19,15,.10);
+    --white:#fff;
+    --maxw:1180px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  ::selection{background:var(--blue-soft);color:var(--blue-deep);}
+  html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+  body{
+    font-family:"Hanken Grotesk","Noto Sans SC",system-ui,sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    line-height:1.6;
+    overflow-x:hidden;
+    position:relative;
+  }
+  /* 颗粒噪点叠层，给纸面质感 */
+  body::before{
+    content:"";position:fixed;inset:0;z-index:9999;pointer-events:none;opacity:.04;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  a{color:inherit;text-decoration:none;}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 28px;}
+  .mono{font-family:"Space Mono",monospace;}
+  .serif{font-family:"Fraunces",serif;}
+
+  .kicker{
+    font-family:"Space Mono",monospace;
+    font-size:12px;letter-spacing:.24em;text-transform:uppercase;
+    color:var(--blue-deep);display:inline-flex;align-items:center;gap:10px;
+  }
+  .kicker::before{content:"";width:26px;height:1px;background:var(--blue);}
+
+  mark{background:linear-gradient(transparent 8%, var(--blue-soft) 8%);color:inherit;padding:0 .06em;border-radius:2px;}
+
+  /* ---------- NAV ---------- */
+  nav{position:sticky;top:0;z-index:200;backdrop-filter:blur(10px);
+    background:rgba(251,248,241,.78);border-bottom:1px solid var(--line);}
+  nav .wrap{display:flex;align-items:center;justify-content:space-between;height:64px;}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.01em;}
+  .brand .gldot{width:24px;height:24px;border-radius:7px;background:var(--blue);color:#fff;
+    display:grid;place-items:center;font-size:14px;font-weight:700;
+    box-shadow:0 4px 14px var(--blue-glow);}
+  .brand small{font-family:"Space Mono",monospace;font-weight:400;color:var(--ink-3);font-size:12.5px;letter-spacing:.02em;}
+  .navlinks{display:flex;gap:30px;align-items:center;font-size:14.5px;}
+  .navlinks a{color:var(--ink-2);transition:color .2s;}
+  .navlinks a:hover{color:var(--blue-deep);}
+  .navlinks .gh{color:var(--ink);font-weight:600;}
+  @media(max-width:720px){.navlinks a:not(.gh){display:none;}}
+
+  /* ---------- HERO ---------- */
+  header{position:relative;padding:96px 0 60px;}
+  .hero-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center;}
+  @media(max-width:920px){.hero-grid{grid-template-columns:1fr;gap:44px;}}
+
+  h1{font-family:"Noto Sans SC",sans-serif;font-weight:900;
+    font-size:clamp(40px,6.4vw,76px);line-height:1.02;letter-spacing:-.01em;margin:22px 0 0;}
+  h1 .l2{display:block;}
+  h1 mark{background:linear-gradient(transparent 12%, var(--blue-soft) 12% 88%, transparent 88%);padding:0 .12em;}
+  .hero-sub{font-family:"Fraunces",serif;font-style:italic;font-weight:400;
+    font-size:clamp(19px,2.4vw,26px);color:var(--blue-deep);margin-top:18px;letter-spacing:.01em;}
+  .hero-p{font-size:17px;color:var(--ink-2);max-width:30em;margin-top:18px;}
+  .cta{display:flex;gap:14px;margin-top:34px;flex-wrap:wrap;}
+  .btn{display:inline-flex;align-items:center;gap:9px;padding:14px 24px;border-radius:11px;
+    font-weight:600;font-size:15px;transition:transform .18s,box-shadow .18s,background .18s;cursor:pointer;border:none;}
+  .btn-primary{background:var(--ink);color:var(--paper);box-shadow:0 8px 24px rgba(22,19,15,.22);}
+  .btn-primary:hover{transform:translateY(-2px);box-shadow:0 14px 32px rgba(22,19,15,.30);}
+  .btn-ghost{background:transparent;color:var(--ink);border:1px solid var(--line);}
+  .btn-ghost:hover{border-color:var(--blue);color:var(--blue-deep);transform:translateY(-2px);}
+  .hero-note{margin-top:24px;font-size:13.5px;color:var(--ink-3);}
+  .hero-note b{color:var(--ink-2);font-weight:600;}
+
+  /* hero 右侧：一个微缩"应用窗口"静态预览 */
+  .preview{background:var(--white);border:1px solid var(--line);border-radius:16px;overflow:hidden;
+    box-shadow:0 30px 60px -24px rgba(22,19,15,.30),0 6px 14px rgba(22,19,15,.05);
+    transform:rotate(-1.2deg);}
+  .preview .bar{display:flex;align-items:center;gap:7px;padding:13px 16px;border-bottom:1px solid var(--line);background:var(--paper-2);}
+  .preview .bar i{width:11px;height:11px;border-radius:50%;background:#d9d3c6;display:block;}
+  .preview .bar i:nth-child(1){background:#f0a59a;}
+  .preview .bar i:nth-child(2){background:#f3cf8e;}
+  .preview .bar i:nth-child(3){background:#a9d6a0;}
+  .preview .bar span{margin-left:10px;font-family:"Space Mono",monospace;font-size:12px;color:var(--ink-3);}
+  .preview .body{padding:26px 24px 30px;font-size:15.5px;color:var(--ink-2);line-height:1.85;position:relative;}
+  .preview .body .hl{background:var(--blue-soft);border-radius:2px;padding:1px 0;}
+  .pv-dot{position:absolute;width:26px;height:26px;border-radius:50%;background:var(--blue);color:#fff;
+    display:grid;place-items:center;font-size:13px;font-weight:700;box-shadow:0 6px 16px var(--blue-glow);
+    animation:bob 2.4s ease-in-out infinite;}
+  @keyframes bob{0%,100%{transform:translateY(0);}50%{transform:translateY(-5px);}}
+  .pv-bubble{position:absolute;background:#fff;border:1px solid #e2e6ee;border-radius:12px;padding:11px 15px;
+    font-size:14.5px;color:var(--ink);box-shadow:0 14px 30px -10px rgba(22,19,15,.28);max-width:230px;}
+  .pv-bubble::before{content:"";position:absolute;left:-7px;top:16px;width:12px;height:12px;background:#fff;
+    border-left:1px solid #e2e6ee;border-bottom:1px solid #e2e6ee;transform:rotate(45deg);}
+
+  /* ---------- SECTION SHELL ---------- */
+  section{padding:84px 0;position:relative;}
+  .sec-head{max-width:46em;margin-bottom:48px;}
+  .sec-head h2{font-family:"Noto Sans SC",sans-serif;font-weight:900;
+    font-size:clamp(28px,3.6vw,42px);line-height:1.12;letter-spacing:-.01em;margin-top:16px;}
+  .sec-head p{color:var(--ink-2);font-size:16.5px;margin-top:14px;max-width:34em;}
+
+  /* ---------- DEMO ---------- */
+  .demo{background:var(--paper-2);border-top:1px solid var(--line);border-bottom:1px solid var(--line);}
+  .demo-stage{display:grid;grid-template-columns:1fr;gap:0;max-width:760px;margin:0 auto;}
+  .demo-window{background:var(--white);border:1px solid var(--line);border-radius:16px;overflow:hidden;
+    box-shadow:0 40px 80px -36px rgba(22,19,15,.34);}
+  .demo-window .bar{display:flex;align-items:center;gap:7px;padding:14px 18px;border-bottom:1px solid var(--line);background:var(--paper-2);}
+  .demo-window .bar i{width:12px;height:12px;border-radius:50%;}
+  .demo-window .bar i:nth-child(1){background:#f0a59a;}
+  .demo-window .bar i:nth-child(2){background:#f3cf8e;}
+  .demo-window .bar i:nth-child(3){background:#a9d6a0;}
+  .demo-window .bar span{margin-left:12px;font-family:"Space Mono",monospace;font-size:12.5px;color:var(--ink-3);}
+  #demoText{padding:40px 40px 46px;font-family:"Fraunces",serif;font-size:clamp(20px,2.6vw,27px);
+    line-height:1.7;color:var(--ink);cursor:text;}
+  #demoText .sent{transition:background .2s;}
+  @media(max-width:560px){#demoText{padding:28px 24px 32px;}}
+  .demo-hint{text-align:center;margin-top:26px;font-size:14.5px;color:var(--ink-2);display:flex;
+    align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;}
+  .demo-hint .key{font-family:"Space Mono",monospace;font-size:12px;border:1px solid var(--line);
+    border-radius:6px;padding:2px 8px;background:#fff;color:var(--ink-2);}
+  .demo-cap{text-align:center;margin-top:14px;font-size:13px;color:var(--ink-3);}
+
+  /* 浮动圆点 + 气泡（演示用，fixed 跟随选区） */
+  #floatDot{position:fixed;z-index:300;width:28px;height:28px;border-radius:50%;background:var(--blue);
+    color:#fff;display:none;place-items:center;font-size:14px;font-weight:700;cursor:pointer;
+    box-shadow:0 6px 18px var(--blue-glow);animation:pop .22s cubic-bezier(.2,1.4,.4,1);}
+  #floatDot:hover{transform:scale(1.08);}
+  @keyframes pop{from{transform:scale(.2);opacity:0;}to{transform:scale(1);opacity:1;}}
+  #floatBubble{position:fixed;z-index:301;display:none;background:#fff;border:1px solid #e2e6ee;
+    border-radius:13px;padding:13px 17px;max-width:320px;font-size:15px;line-height:1.6;color:var(--ink);
+    box-shadow:0 20px 44px -14px rgba(22,19,15,.34);animation:pop .2s ease;}
+  #floatBubble::before{content:"";position:absolute;left:-7px;top:18px;width:12px;height:12px;background:#fff;
+    border-left:1px solid #e2e6ee;border-bottom:1px solid #e2e6ee;transform:rotate(45deg);}
+  .caret{display:inline-block;width:2px;height:1.05em;background:var(--blue);vertical-align:-2px;
+    margin-left:1px;animation:blink .9s step-end infinite;}
+  @keyframes blink{50%{opacity:0;}}
+  .dots3{display:inline-flex;gap:5px;align-items:center;height:1em;}
+  .dots3 b{width:6px;height:6px;border-radius:50%;background:#9ca3af;animation:d3 1s infinite;}
+  .dots3 b:nth-child(2){animation-delay:.15s;}
+  .dots3 b:nth-child(3){animation-delay:.3s;}
+  @keyframes d3{0%,100%{opacity:.3;transform:translateY(0);}40%{opacity:1;transform:translateY(-3px);}}
+
+  /* ---------- FEATURES ---------- */
+  .feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);
+    border:1px solid var(--line);border-radius:18px;overflow:hidden;}
+  @media(max-width:880px){.feat-grid{grid-template-columns:repeat(2,1fr);}}
+  @media(max-width:560px){.feat-grid{grid-template-columns:1fr;}}
+  .feat{background:var(--paper);padding:34px 30px 38px;transition:background .25s;}
+  .feat:hover{background:var(--white);}
+  .feat svg{width:24px;height:24px;color:var(--blue);margin-bottom:18px;}
+  .feat h3{font-size:18px;font-weight:700;letter-spacing:.01em;}
+  .feat p{color:var(--ink-2);font-size:14.5px;margin-top:9px;}
+
+  /* ---------- STEPS ---------- */
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:36px;}
+  @media(max-width:760px){.steps{grid-template-columns:1fr;gap:30px;}}
+  .step{border-top:2px solid var(--ink);padding-top:20px;}
+  .step .n{font-family:"Fraunces",serif;font-size:54px;font-weight:600;line-height:1;color:var(--blue);}
+  .step h3{font-size:19px;font-weight:700;margin-top:14px;}
+  .step p{color:var(--ink-2);font-size:14.5px;margin-top:8px;}
+
+  /* ---------- PROVIDERS ---------- */
+  .prov{background:var(--ink);color:var(--paper);border-radius:22px;padding:54px 44px;}
+  .prov .kicker{color:#9db8ff;}
+  .prov .kicker::before{background:#9db8ff;}
+  .prov h2{font-family:"Noto Sans SC",sans-serif;font-weight:900;font-size:clamp(24px,3vw,34px);
+    margin-top:16px;line-height:1.2;}
+  .prov h2 .em{font-family:"Fraunces",serif;font-style:italic;font-weight:400;color:#9db8ff;}
+  .chips{display:flex;flex-wrap:wrap;gap:11px;margin-top:30px;}
+  .chip{border:1px solid rgba(251,248,241,.22);border-radius:999px;padding:9px 18px;font-size:14px;
+    font-family:"Space Mono",monospace;letter-spacing:.01em;transition:.2s;}
+  .chip:hover{background:rgba(157,184,255,.16);border-color:#9db8ff;}
+  .chip.lead{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:700;}
+  .prov .foot{margin-top:26px;color:#b9b3a6;font-size:14px;max-width:38em;}
+  .prov .foot b{color:#fff;}
+
+  /* ---------- INSTALL ---------- */
+  .install{text-align:center;}
+  .install h2{font-family:"Noto Sans SC",sans-serif;font-weight:900;font-size:clamp(30px,4vw,48px);letter-spacing:-.01em;}
+  .install h2 .b{color:var(--blue);}
+  .install p{color:var(--ink-2);margin-top:14px;font-size:16.5px;}
+  .codebox{position:relative;max-width:620px;margin:36px auto 0;text-align:left;
+    background:var(--ink);color:#ede7da;border-radius:14px;padding:24px 22px;
+    font-family:"Space Mono",monospace;font-size:14px;line-height:2;
+    box-shadow:0 30px 60px -26px rgba(22,19,15,.4);overflow-x:auto;}
+  .codebox .ln{white-space:pre;}
+  .codebox .ln .p{color:#7f93c9;user-select:none;}
+  .codebox .ln .c{color:#86b8ff;}
+  .copybtn{position:absolute;top:14px;right:14px;background:rgba(251,248,241,.10);border:1px solid rgba(251,248,241,.18);
+    color:#ede7da;font-family:"Space Mono",monospace;font-size:12px;padding:6px 12px;border-radius:8px;cursor:pointer;transition:.2s;}
+  .copybtn:hover{background:rgba(157,184,255,.2);}
+  .install .cta{justify-content:center;}
+  .install .mac-note{margin-top:22px;font-size:13.5px;color:var(--ink-3);}
+  .install .mac-note b{color:var(--ink-2);}
+
+  /* ---------- FOOTER ---------- */
+  footer{border-top:1px solid var(--line);padding:48px 0 60px;margin-top:30px;}
+  footer .wrap{display:flex;justify-content:space-between;align-items:flex-start;gap:30px;flex-wrap:wrap;}
+  footer .brand{margin-bottom:0;}
+  footer p{color:var(--ink-3);font-size:13.5px;max-width:30em;margin-top:14px;}
+  footer .fl{display:flex;gap:26px;font-size:14px;color:var(--ink-2);}
+  footer .fl a:hover{color:var(--blue-deep);}
+
+  /* reveal */
+  .reveal{opacity:0;transform:translateY(22px);transition:opacity .7s ease,transform .7s ease;}
+  .reveal.in{opacity:1;transform:none;}
+  @media(prefers-reduced-motion:reduce){
+    .reveal{opacity:1;transform:none;transition:none;}
+    .pv-dot,#floatDot{animation:none;}
+    html{scroll-behavior:auto;}
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top"><span class="gldot">译</span>Select-translation <small>/ 划词翻译</small></a>
+    <div class="navlinks">
+      <a href="#demo">演示</a>
+      <a href="#features">特性</a>
+      <a href="#how">怎么用</a>
+      <a class="gh" href="https://github.com/horton2048/Select-translation" target="_blank" rel="noopener">GitHub ↗</a>
+    </div>
+  </div>
+</nav>
+
+<header id="top">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="kicker reveal">Windows · macOS · 开源</span>
+      <h1 class="reveal" style="transition-delay:.06s">在任何应用里，<span class="l2"><mark>选中</mark>即译。</span></h1>
+      <p class="hero-sub reveal" style="transition-delay:.12s">Select anything, translate instantly.</p>
+      <p class="hero-p reveal" style="transition-delay:.18s">浏览器、PDF、IDE、聊天窗口——拖选一段文字，光标旁浮起一个蓝色「译」圆点。点它，大模型把译文逐字流式蹦出来。不用切窗口，不用按快捷键。</p>
+      <div class="cta reveal" style="transition-delay:.24s">
+        <a class="btn btn-primary" href="https://github.com/horton2048/Select-translation" target="_blank" rel="noopener">在 GitHub 安装 ↗</a>
+        <a class="btn btn-ghost" href="#demo">↓ 先试试效果</a>
+      </div>
+      <p class="hero-note reveal" style="transition-delay:.3s">接入 <b>DeepSeek · 通义千问 · 智谱 · Kimi · OpenAI · Ollama</b> 等任意 OpenAI 兼容服务。</p>
+    </div>
+
+    <div class="reveal" style="transition-delay:.2s">
+      <div class="preview">
+        <div class="bar"><i></i><i></i><i></i><span>an-article.com</span></div>
+        <div class="body">
+          Reading in a foreign language is slow. You hit a sentence, lose the thread, and
+          reach for a dictionary. <span class="hl">What if translation lived right where your cursor is?</span>
+          <span class="pv-dot" style="right:30px;top:78px;">译</span>
+          <div class="pv-bubble" style="right:18px;top:118px;">如果翻译就在你光标所在的地方呢？</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section class="demo" id="demo">
+  <div class="wrap">
+    <div class="sec-head reveal" style="text-align:center;margin:0 auto 40px;">
+      <span class="kicker" style="justify-content:center;">实时演示 · TRY IT</span>
+      <h2>不用安装，先在这页上试一下。</h2>
+    </div>
+    <div class="demo-stage reveal">
+      <div class="demo-window">
+        <div class="bar"><i></i><i></i><i></i><span>demo — 选中下面任意一句</span></div>
+        <p id="demoText">
+          <span class="sent" data-zh="好奇心是一切成就的引擎。">Curiosity is the engine of every achievement.</span>
+          <span class="sent" data-zh="你停止发问的那一刻，就是你停止成长的那一刻。">The moment you stop asking questions is the moment you stop growing.</span>
+          <span class="sent" data-zh="广泛阅读，自由划选，让思想跨越语言的边界。">Read widely, select freely, and let ideas cross the borders of language.</span>
+        </p>
+      </div>
+      <div class="demo-hint">
+        <span>👆 用鼠标拖选上面任意一句英文</span>
+        <span>→ 点蓝色圆点</span>
+        <span class="key">Esc 关闭气泡</span>
+      </div>
+      <p class="demo-cap">这就是装好之后，在你<b>任何应用</b>里的样子。</p>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="kicker">为什么顺手</span>
+      <h2>小到一个圆点，<br>但每个细节都为"不打断你"而设计。</h2>
+      <p>它不抢你的剪贴板、不占你的窗口，只在你需要的那一秒出现。</p>
+    </div>
+    <div class="feat-grid">
+      <div class="feat reveal">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="2.5" y="9.5" width="12" height="5" rx="1"/><path d="M19 5v14M16.5 5h5M16.5 19h5"/></svg>
+        <h3>全局划词</h3>
+        <p>浏览器、PDF 阅读器、IDE、记事本、聊天软件——任何应用里拖选都能触发。</p>
+      </div>
+      <div class="feat reveal" style="transition-delay:.05s">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 7h16M4 12h11M4 17h14"/><circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none"/></svg>
+        <h3>流式译文</h3>
+        <p>token 实时追加渲染，第一个字几乎瞬间出现，不用盯着转圈干等。</p>
+      </div>
+      <div class="feat reveal" style="transition-delay:.1s">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8" cy="8" r="3" fill="currentColor" stroke="none"/><path d="M13 13l7 7M13 13v6M13 13h6"/></svg>
+        <h3>跟随光标的圆点</h3>
+        <p>有道词典 / Bob 那种顺手：圆点贴着选区出现，约 2 秒自动隐去，不点就走。</p>
+      </div>
+      <div class="feat reveal">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/><path d="M9.5 3v3M14.5 3v3M9.5 18v3M14.5 18v3M3 9.5h3M3 14.5h3M18 9.5h3M18 14.5h3"/></svg>
+        <h3>任意大模型</h3>
+        <p>OpenAI 兼容协议，换服务商只改 Base URL 和模型名。默认 MiniMax-M2.1。</p>
+      </div>
+      <div class="feat reveal" style="transition-delay:.05s">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3" y="7.5" width="12" height="9" rx="1.5"/><rect x="9" y="3.5" width="12" height="9" rx="1.5"/></svg>
+        <h3>Windows + macOS</h3>
+        <p>同一套代码、同一种体验。平台差异只隔离在一个文件里，行为完全对齐。</p>
+      </div>
+      <div class="feat reveal" style="transition-delay:.1s">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 6h18"/><circle cx="17" cy="6" r="1.4" fill="currentColor" stroke="none"/><rect x="5" y="11" width="14" height="9" rx="1.5"/></svg>
+        <h3>常驻托盘</h3>
+        <p>菜单栏 / 系统托盘一键暂停、设置、退出。配置存在本地 <span class="mono" style="font-size:13px;">~/.translate-popup</span>。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how" style="background:var(--paper-2);border-top:1px solid var(--line);border-bottom:1px solid var(--line);">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="kicker">三步</span>
+      <h2>从选中到译文，<br>一次顺滑的手势。</h2>
+    </div>
+    <div class="steps">
+      <div class="step reveal"><div class="n">01</div><h3>选中</h3><p>拖选任意一段文本。单击不会触发——避免误判，也不打断你正常复制。</p></div>
+      <div class="step reveal" style="transition-delay:.08s"><div class="n">02</div><h3>出现「译」</h3><p>光标右上角浮起蓝色小圆点，大约 2 秒后自动隐去；移上去它会留下来等你。</p></div>
+      <div class="step reveal" style="transition-delay:.16s"><div class="n">03</div><h3>点击翻译</h3><p>弹出卡片，流式渲染译文。<span class="mono" style="font-size:13px;">Esc</span> 关闭，也能一键复制结果。</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="prov reveal">
+      <span class="kicker">你的模型，你做主</span>
+      <h2>插上任意 <span class="em">OpenAI-compatible</span> 服务就能跑。</h2>
+      <div class="chips">
+        <span class="chip lead">MiniMax-M2.1</span>
+        <span class="chip">DeepSeek</span>
+        <span class="chip">通义千问 · DashScope</span>
+        <span class="chip">智谱 GLM</span>
+        <span class="chip">Moonshot Kimi</span>
+        <span class="chip">OpenAI</span>
+        <span class="chip">Ollama 本地</span>
+      </div>
+      <p class="foot"><b>中英自动反向：</b>选中中文译成英文，选中英文译成中文。预设里切换服务商会自动填好 Base URL 和模型名，填上 API Key 即用。</p>
+    </div>
+  </div>
+</section>
+
+<section class="install" id="install">
+  <div class="wrap">
+    <span class="kicker reveal" style="justify-content:center;">安装</span>
+    <h2 class="reveal" style="transition-delay:.05s">几行命令，<span class="b">装到你的电脑。</span></h2>
+    <p class="reveal" style="transition-delay:.1s">需要 Python 3。克隆仓库、装依赖、跑起来——就这样。</p>
+    <div class="codebox reveal" style="transition-delay:.14s">
+      <button class="copybtn" id="copyBtn">复制</button>
+      <div class="ln"><span class="p">$ </span><span class="c">git clone</span> https://github.com/horton2048/Select-translation.git</div>
+      <div class="ln"><span class="p">$ </span><span class="c">cd</span> Select-translation</div>
+      <div class="ln"><span class="p">$ </span>pip install -r requirements.txt</div>
+      <div class="ln"><span class="p">$ </span>python main.py</div>
+    </div>
+    <div class="cta reveal" style="transition-delay:.18s">
+      <a class="btn btn-primary" href="https://github.com/horton2048/Select-translation" target="_blank" rel="noopener">在 GitHub 打开 ↗</a>
+      <a class="btn btn-ghost" href="https://github.com/horton2048/Select-translation#readme" target="_blank" rel="noopener">阅读文档</a>
+    </div>
+    <p class="mac-note reveal" style="transition-delay:.22s">macOS 首次需在 <b>系统设置 → 隐私与安全性 → 辅助功能 / 输入监控</b> 里授权后重启。</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <a class="brand" href="#top"><span class="gldot">译</span>Select-translation</a>
+      <p>一个轻量的桌面划词翻译工具。灵感对标 openai-translator，交互更接近网易有道词典 / Bob：选中 → 光标旁出圆点 → 点击翻译。</p>
+    </div>
+    <div class="fl">
+      <a href="https://github.com/horton2048/Select-translation" target="_blank" rel="noopener">GitHub ↗</a>
+      <a href="https://github.com/horton2048/Select-translation#readme" target="_blank" rel="noopener">文档</a>
+      <a href="#top">回到顶部</a>
+    </div>
+  </div>
+</footer>
+
+<!-- 演示用浮动圆点 + 气泡 -->
+<div id="floatDot">译</div>
+<div id="floatBubble"></div>
+
+<script>
+(function(){
+  // ---- 滚动入场 ----
+  var io=new IntersectionObserver(function(es){
+    es.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); } });
+  },{threshold:.12});
+  document.querySelectorAll('.reveal').forEach(function(el){ io.observe(el); });
+
+  // ---- 复制安装命令 ----
+  var copyBtn=document.getElementById('copyBtn');
+  var cmd='git clone https://github.com/horton2048/Select-translation.git\ncd Select-translation\npip install -r requirements.txt\npython main.py';
+  copyBtn.addEventListener('click',function(){
+    navigator.clipboard.writeText(cmd).then(function(){
+      copyBtn.textContent='已复制 ✓';
+      setTimeout(function(){ copyBtn.textContent='复制'; },1600);
+    }).catch(function(){ copyBtn.textContent='复制失败'; });
+  });
+
+  // ---- 交互式划词演示 ----
+  var demoText=document.getElementById('demoText');
+  var dot=document.getElementById('floatDot');
+  var bubble=document.getElementById('floatBubble');
+  var pendingZh='';
+  var streamTimer=null;
+
+  function hideAll(){
+    dot.style.display='none';
+    bubble.style.display='none';
+    if(streamTimer){ clearInterval(streamTimer); streamTimer=null; }
+  }
+
+  function sentenceZhFromSelection(sel){
+    var node=sel.anchorNode;
+    while(node && node!==demoText){
+      if(node.nodeType===1 && node.classList && node.classList.contains('sent')) return node.getAttribute('data-zh');
+      node=node.parentNode;
+    }
+    // 跨句选择：取与选区文本重叠最多的句子
+    var txt=sel.toString().trim(), best=null, bestLen=0;
+    demoText.querySelectorAll('.sent').forEach(function(s){
+      var en=s.textContent.trim();
+      if(en.indexOf(txt)>=0 || txt.indexOf(en)>=0){ if(en.length>bestLen){ bestLen=en.length; best=s.getAttribute('data-zh'); } }
+    });
+    return best;
+  }
+
+  demoText.addEventListener('mouseup',function(){
+    setTimeout(function(){
+      var sel=window.getSelection();
+      if(!sel || sel.isCollapsed){ return; }
+      var txt=sel.toString().trim();
+      if(txt.length<2){ hideAll(); return; }
+      var zh=sentenceZhFromSelection(sel);
+      if(!zh){ hideAll(); return; }
+      pendingZh=zh;
+      var rect=sel.getRangeAt(0).getBoundingClientRect();
+      // 圆点贴选区右上角
+      dot.style.left=(rect.right+4)+'px';
+      dot.style.top=(rect.top-32)+'px';
+      dot.style.display='grid';
+      bubble.style.display='none';
+    },0);
+  });
+
+  dot.addEventListener('click',function(e){
+    e.stopPropagation();
+    var dr=dot.getBoundingClientRect();
+    var bx=Math.min(dr.left+8, window.innerWidth-340);
+    var by=dr.bottom+8;
+    bubble.style.left=Math.max(12,bx)+'px';
+    bubble.style.top=by+'px';
+    bubble.innerHTML='<span class="dots3"><b></b><b></b><b></b></span>';
+    bubble.style.display='block';
+    dot.style.display='none';
+    // 模拟流式逐字输出
+    var i=0, chars=Array.from(pendingZh);
+    if(streamTimer) clearInterval(streamTimer);
+    setTimeout(function(){
+      bubble.innerHTML='<span id="streamOut"></span><span class="caret"></span>';
+      var out=document.getElementById('streamOut');
+      streamTimer=setInterval(function(){
+        if(i>=chars.length){
+          clearInterval(streamTimer); streamTimer=null;
+          bubble.innerHTML='<span>'+pendingZh+'</span>';
+          return;
+        }
+        out.textContent+=chars[i++];
+      },55);
+    },420);
+  });
+
+  // 点别处 / 滚动 / Esc 关闭
+  document.addEventListener('mousedown',function(e){
+    if(e.target===dot || bubble.contains(e.target) || demoText.contains(e.target)) return;
+    hideAll();
+  });
+  window.addEventListener('scroll',hideAll,{passive:true});
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape') hideAll(); });
+})();
+</script>
+</body>
+</html>
