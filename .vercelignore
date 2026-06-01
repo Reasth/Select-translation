@@ -1,9 +1,9 @@
-# 只发布 docs/ 里的静态介绍页，避免 Vercel 把根目录的 Python 当成可构建项目。
+# 只发布 docs/ 里的静态介绍页 + api/ 函数；避免 Vercel 把根目录的 Python 当成可构建项目。
 *.py
 __pycache__/
 .pytest_cache/
-tools/
-assets/
-*.vbs
 *.command
 requirements.txt
+TranslatePopup.spec
+build_win.ps1
+*.iss
