@@ -25,10 +25,11 @@ def make_icon() -> QIcon:
 
 class TrayController(QObject):
     toggle_enabled = pyqtSignal(bool)
+    toggle_autostart = pyqtSignal(bool)
     open_settings = pyqtSignal()
     quit_app = pyqtSignal()
 
-    def __init__(self, enabled: bool):
+    def __init__(self, enabled: bool, autostart: bool = False):
         super().__init__()
         self.icon = QSystemTrayIcon(make_icon(), self)
         self.icon.setToolTip("翻译助手 - 选中文本即可翻译")
@@ -38,6 +39,11 @@ class TrayController(QObject):
         self.enable_action.setChecked(enabled)
         self.enable_action.toggled.connect(self.toggle_enabled.emit)
         self.menu.addAction(self.enable_action)
+
+        self.autostart_action = QAction("开机自启", self.menu, checkable=True)
+        self.autostart_action.setChecked(autostart)
+        self.autostart_action.toggled.connect(self.toggle_autostart.emit)
+        self.menu.addAction(self.autostart_action)
 
         self.settings_action = QAction("设置…", self.menu)
         self.settings_action.triggered.connect(self.open_settings.emit)
@@ -50,6 +56,11 @@ class TrayController(QObject):
 
         self.icon.setContextMenu(self.menu)
         self.icon.show()
+
+    def set_autostart_checked(self, on: bool) -> None:
+        self.autostart_action.blockSignals(True)
+        self.autostart_action.setChecked(on)
+        self.autostart_action.blockSignals(False)
 
     def notify(self, title: str, body: str) -> None:
         self.icon.showMessage(title, body, QSystemTrayIcon.MessageIcon.Information, 3000)

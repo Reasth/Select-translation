@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import QApplication
 from config import CONFIG_DIR, Config
 from floating_icon import FloatingIcon
 from llm_client import LLMClient
+from platform_backend import is_autostart, set_autostart
 from selection_monitor import SelectionMonitor, grab_selected_text, is_foreground_terminal
 from settings_dialog import SettingsDialog
 from translation_popup import TranslationPopup
@@ -44,7 +45,7 @@ class App:
         self.icon = FloatingIcon()
         self.popup = TranslationPopup(self.client)
         self.monitor = SelectionMonitor()
-        self.tray = TrayController(enabled=self.cfg.enabled)
+        self.tray = TrayController(enabled=self.cfg.enabled, autostart=is_autostart())
         self._suppress_next_close: bool = False
         self._cached_selection_text: str = ""
 
@@ -52,6 +53,7 @@ class App:
         self.monitor.mouse_pressed.connect(self._on_mouse_pressed)
         self.icon.clicked.connect(self._on_icon_clicked)
         self.tray.toggle_enabled.connect(self._on_toggle_enabled)
+        self.tray.toggle_autostart.connect(self._on_toggle_autostart)
         self.tray.open_settings.connect(self._on_open_settings)
         self.tray.quit_app.connect(QApplication.instance().quit)
 
@@ -73,6 +75,14 @@ class App:
             self.monitor.stop()
             self.icon.hide()
             self._cached_selection_text = ""
+
+    def _on_toggle_autostart(self, on: bool):
+        if set_autostart(on):
+            self.cfg.autostart = on
+            self.cfg.save()
+        else:
+            self.tray.set_autostart_checked(is_autostart())
+            self.tray.notify("开机自启", "设置开机自启失败，请检查系统权限。")
 
     def _on_open_settings(self):
         dlg = SettingsDialog(self.cfg)

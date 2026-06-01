@@ -1,7 +1,10 @@
-"""Windows 平台集成层：光标形状判断、前台进程名、复制修饰键。"""
+"""Windows 平台集成层：光标形状判断、前台进程名、复制修饰键、开机自启。"""
 from __future__ import annotations
 
 import ctypes
+import os
+import sys
+import winreg
 from ctypes import wintypes
 
 from pynput.keyboard import Key
@@ -88,3 +91,54 @@ def _foreground_process_name() -> str:
 
 def is_foreground_terminal() -> bool:
     return _foreground_process_name() in _TERMINAL_PROCESS_NAMES
+
+
+# ---- 开机自启：写 HKCU\...\Run（无需管理员权限）----
+_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+_APP_NAME = "TranslatePopup"
+
+
+def _launch_command() -> str:
+    if getattr(sys, "frozen", False):
+        return f'"{sys.executable}"'
+    script = os.path.abspath(sys.argv[0])
+    runner = sys.executable
+    if os.path.basename(runner).lower() == "python.exe":
+        pyw = os.path.join(os.path.dirname(runner), "pythonw.exe")
+        if os.path.exists(pyw):
+            runner = pyw
+    return f'"{runner}" "{script}"'
+
+
+def set_autostart(enabled: bool) -> bool:
+    try:
+        key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, _RUN_KEY)
+    except OSError:
+        return False
+    try:
+        if enabled:
+            winreg.SetValueEx(key, _APP_NAME, 0, winreg.REG_SZ, _launch_command())
+        else:
+            try:
+                winreg.DeleteValue(key, _APP_NAME)
+            except FileNotFoundError:
+                pass
+        return True
+    except OSError:
+        return False
+    finally:
+        winreg.CloseKey(key)
+
+
+def is_autostart() -> bool:
+    try:
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_QUERY_VALUE)
+    except OSError:
+        return False
+    try:
+        winreg.QueryValueEx(key, _APP_NAME)
+        return True
+    except FileNotFoundError:
+        return False
+    finally:
+        winreg.CloseKey(key)

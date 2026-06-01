@@ -11,6 +11,10 @@
 """
 from __future__ import annotations
 
+import os
+import plistlib
+import sys
+
 from AppKit import NSWorkspace
 from pynput.keyboard import Key
 
@@ -42,3 +46,38 @@ def _foreground_bundle_id() -> str:
 
 def is_foreground_terminal() -> bool:
     return _foreground_bundle_id() in _TERMINAL_BUNDLE_IDS
+
+
+# ---- 开机自启：写 ~/Library/LaunchAgents 下的 LaunchAgent plist ----
+_AGENT_LABEL = "com.translatepopup.agent"
+_AGENT_PATH = os.path.expanduser(f"~/Library/LaunchAgents/{_AGENT_LABEL}.plist")
+
+
+def _program_arguments() -> list[str]:
+    if getattr(sys, "frozen", False):
+        return [sys.executable]
+    return [sys.executable, os.path.abspath(sys.argv[0])]
+
+
+def set_autostart(enabled: bool) -> bool:
+    try:
+        if enabled:
+            os.makedirs(os.path.dirname(_AGENT_PATH), exist_ok=True)
+            with open(_AGENT_PATH, "wb") as f:
+                plistlib.dump(
+                    {
+                        "Label": _AGENT_LABEL,
+                        "ProgramArguments": _program_arguments(),
+                        "RunAtLoad": True,
+                    },
+                    f,
+                )
+        elif os.path.exists(_AGENT_PATH):
+            os.remove(_AGENT_PATH)
+        return True
+    except OSError:
+        return False
+
+
+def is_autostart() -> bool:
+    return os.path.exists(_AGENT_PATH)
