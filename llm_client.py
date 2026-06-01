@@ -40,6 +40,7 @@ def _build_chat_payload(
     model: str,
     stream: bool,
     max_tokens: Optional[int] = None,
+    extra: Optional[dict] = None,
 ) -> dict:
     actual_target = resolve_target_lang(text, cfg.target_lang)
     payload: dict = {
@@ -53,6 +54,8 @@ def _build_chat_payload(
     }
     if max_tokens is not None:
         payload["max_tokens"] = max_tokens
+    if extra:
+        payload.update(extra)
     return payload
 
 
@@ -87,7 +90,9 @@ def check_connection(cfg: Config, sample_text: str = "Hello") -> ConnectionCheck
         return ConnectionCheckResult(False, err)
 
     headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
-    payload = _build_chat_payload(cfg, sample_text, model=model, stream=False, max_tokens=64)
+    # hosted 走 M3 必须明确关掉 thinking，否则会浪费 1-3s 推理时间
+    extra = {"thinking": {"type": "disabled"}} if cfg.engine == "hosted" else None
+    payload = _build_chat_payload(cfg, sample_text, model=model, stream=False, max_tokens=64, extra=extra)
     res = http_util.post_json(
         base_url + "/chat/completions",
         payload,
@@ -174,10 +179,11 @@ class LLMClient:
         base_url: str,
         model: str,
         auth_token: Optional[str],
+        extra_payload: Optional[dict] = None,
     ) -> Iterator[str]:
         """通用 OpenAI 兼容流式调用。网络/HTTP 错误向上抛 HttpStreamError。"""
         headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
-        payload = _build_chat_payload(self.cfg, text, model=model, stream=True)
+        payload = _build_chat_payload(self.cfg, text, model=model, stream=True, extra=extra_payload)
         for raw in http_util.stream_post_lines(
             base_url + "/chat/completions",
             payload,
@@ -217,13 +223,15 @@ class LLMClient:
             yield f"[{e.message}]"
 
     def _hosted_stream(self, text: str) -> Iterator[str]:
-        """托管档：用作者代付的代理；失败时静默降级到免费引擎，保证「打开就能翻译」。"""
+        """托管档：用作者代付的代理；失败时静默降级到免费引擎，保证「打开就能翻译」。
+        thinking=disabled 在 M3 上是真禁推理（实测 0 think token，TTFT 直接降到 ~3s）。"""
         try:
             yield from self._stream_openai_compat(
                 text,
                 base_url=HOSTED_PROXY_BASE_URL,
                 model=HOSTED_DEFAULT_MODEL,
                 auth_token=None,
+                extra_payload={"thinking": {"type": "disabled"}},
             )
         except http_util.HttpStreamError as e:
             logging.warning("hosted engine failed (%s), falling back to free", e.message)

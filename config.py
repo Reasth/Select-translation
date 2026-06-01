@@ -26,7 +26,9 @@ def normalize_base_url(value: str) -> str:
 
 # 托管代理是定值，不放进 Config（避免被本地配置改写指向别处）。
 HOSTED_PROXY_BASE_URL = "https://translate-omega-livid.vercel.app/api/v1"
-HOSTED_DEFAULT_MODEL = "MiniMax-M2.7-highspeed"
+# M3 是 MiniMax 唯一真正尊重 thinking=disabled 的旗舰模型（实测 0 think token）。
+# M2.x 系列「-highspeed」对 thinking=disabled 半听不听，仍会浪费 400+ 字思考 tokens。
+HOSTED_DEFAULT_MODEL = "MiniMax-M3"
 
 
 @dataclass
