@@ -12,7 +12,9 @@
  *  - 透传 stream，让 SSE 流式正常工作
  */
 
-export const config = { runtime: 'edge' };
+// 上游是 api.minimaxi.com（中国大陆），固定到 Tokyo edge 以缩短回程跳数。
+// Vercel 默认全球边缘自动调度，从美西 edge 回上游要绕大半圈，可省 100-200ms。
+export const config = { runtime: 'edge', regions: ['hnd1'] };
 
 const UPSTREAM = 'https://api.minimaxi.com/v1/chat/completions';
 
