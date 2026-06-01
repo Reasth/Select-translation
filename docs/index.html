@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>译 · Select-translation — Translate anywhere, just by selecting</title>
-<meta name="description" content="A lightweight inline-translation desktop tool (Windows / macOS): select text and a blue 译 dot floats up by your cursor — click it for a streamed LLM translation. Plug in DeepSeek / Qwen / Zhipu / Kimi / OpenAI / Ollama — any OpenAI-compatible service.">
+<meta name="description" content="A lightweight, zero-config inline-translation desktop tool (Windows / macOS): select text and a blue 译 dot floats up by your cursor — click for an instant AI translation powered by MiniMax M2.7-highspeed (no API key needed). Optionally plug in your own DeepSeek / Qwen / Zhipu / Kimi / OpenAI / Ollama key for full control.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400;1,9..144,500&family=Hanken+Grotesk:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@300;400;500;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -257,12 +257,12 @@
       <span class="kicker reveal" data-i18n="heroKicker">Windows · macOS · Open source</span>
       <h1 class="reveal" style="transition-delay:.06s" data-i18n="heroH1">Translate anywhere,<span class="l2">just by <mark>selecting</mark>.</span></h1>
       <p class="hero-sub reveal" style="transition-delay:.12s" data-i18n="heroSub">Read foreign text like it's your own.</p>
-      <p class="hero-p reveal" style="transition-delay:.18s" data-i18n="heroP">In your browser, a PDF, your IDE, a chat window — select any text and a blue 译 dot floats up beside your cursor. Click it, and a large language model streams the translation out, word by word. No window-switching, no hotkeys.</p>
+      <p class="hero-p reveal" style="transition-delay:.18s" data-i18n="heroP">In your browser, a PDF, your IDE, a chat window — select any text and a blue 译 dot floats up beside your cursor. Click it and MiniMax M2.7-highspeed streams the AI translation back — no API key, no setup. The hosted proxy is on us; bring your own AI when you want full control.</p>
       <div class="cta reveal" style="transition-delay:.24s">
         <a class="btn btn-primary" href="https://github.com/horton2048/Select-translation" target="_blank" rel="noopener" data-i18n="heroBtnInstall">Install from GitHub ↗</a>
         <a class="btn btn-ghost" href="#demo" data-i18n="heroBtnDemo">↓ Try it first</a>
       </div>
-      <p class="hero-note reveal" style="transition-delay:.3s" data-i18n="heroNote">Plug in <b>DeepSeek · Qwen · Zhipu · Kimi · OpenAI · Ollama</b> — any OpenAI-compatible service.</p>
+      <p class="hero-note reveal" style="transition-delay:.3s" data-i18n="heroNote">Powered by <b>MiniMax M2.7-highspeed</b> — free, no API key, no signup. Optional: plug in your own <b>DeepSeek · Qwen · Zhipu · Kimi · OpenAI · Ollama</b> key.</p>
     </div>
 
     <div class="reveal" style="transition-delay:.2s">
@@ -320,8 +320,8 @@
       </div>
       <div class="feat reveal">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/><path d="M9.5 3v3M14.5 3v3M9.5 18v3M14.5 18v3M3 9.5h3M3 14.5h3M18 9.5h3M18 14.5h3"/></svg>
-        <h3 data-i18n="f4t">Any LLM</h3>
-        <p data-i18n="f4d">OpenAI-compatible protocol — switch providers by editing one Base URL and model name. Defaults to MiniMax-M2.1.</p>
+        <h3 data-i18n="f4t">Free MiniMax AI, or your own key</h3>
+        <p data-i18n="f4d">Opens with hosted MiniMax M2.7-highspeed — no key, no signup. Switch to any OpenAI-compatible model (DeepSeek / Qwen / Zhipu / Kimi / OpenAI / Ollama) when you want full control.</p>
       </div>
       <div class="feat reveal" style="transition-delay:.05s">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3" y="7.5" width="12" height="9" rx="1.5"/><rect x="9" y="3.5" width="12" height="9" rx="1.5"/></svg>
@@ -365,7 +365,7 @@
         <span class="chip">OpenAI</span>
         <span class="chip" data-i18n="chipOllama">Ollama (local)</span>
       </div>
-      <p class="foot" data-i18n="provFoot"><b>Auto bi-directional:</b> select Chinese and it goes to English, select English and it goes to Chinese. Picking a provider preset auto-fills the Base URL and model name — just add your API key.</p>
+      <p class="foot" data-i18n="provFoot"><b>Auto bi-directional:</b> select Chinese and it goes to English, select English and it goes to Chinese. The hosted MiniMax proxy needs no key at all; switch to AI and a provider preset auto-fills the Base URL and model — just add your key.</p>
     </div>
   </div>
 </section>
@@ -374,7 +374,7 @@
   <div class="wrap">
     <span class="kicker reveal" style="justify-content:center;" data-i18n="installKicker">Install</span>
     <h2 class="reveal" style="transition-delay:.05s" data-i18n="installH2">A few commands,<span class="b"> and it's on your machine.</span></h2>
-    <p class="reveal" style="transition-delay:.1s" data-i18n="installP">Requires Python 3. Clone, install deps, run — that's it.</p>
+    <p class="reveal" style="transition-delay:.1s" data-i18n="installP">Opens free with no API key. Run from source with Python 3 — or build the lightweight single-file app (one small executable) with the included script.</p>
     <div class="codebox reveal" style="transition-delay:.14s">
       <button class="copybtn" id="copyBtn" data-i18n="copyBtn">Copy</button>
       <div class="ln"><span class="p">$ </span><span class="c">git clone</span> https://github.com/horton2048/Select-translation.git</div>
@@ -418,10 +418,10 @@
       heroKicker:"Windows · macOS · Open source",
       heroH1:'Translate anywhere,<span class="l2">just by <mark>selecting</mark>.</span>',
       heroSub:"Read foreign text like it's your own.",
-      heroP:"In your browser, a PDF, your IDE, a chat window — select any text and a blue 译 dot floats up beside your cursor. Click it, and a large language model streams the translation out, word by word. No window-switching, no hotkeys.",
+      heroP:"In your browser, a PDF, your IDE, a chat window — select any text and a blue 译 dot floats up beside your cursor. Click it and MiniMax M2.7-highspeed streams the AI translation back — no API key, no setup. The hosted proxy is on us; bring your own AI when you want full control.",
       heroBtnInstall:"Install from GitHub ↗",
       heroBtnDemo:"↓ Try it first",
-      heroNote:'Plug in <b>DeepSeek · Qwen · Zhipu · Kimi · OpenAI · Ollama</b> — any OpenAI-compatible service.',
+      heroNote:'Powered by <b>MiniMax M2.7-highspeed</b> — free, no API key, no signup. Optional: plug in your own <b>DeepSeek · Qwen · Zhipu · Kimi · OpenAI · Ollama</b> key.',
       demoKicker:"Live demo · TRY IT",
       demoH2:"No install needed — try it right on this page.",
       demoBar:"demo — select any line below",
@@ -433,7 +433,7 @@
       f1t:"Select anywhere", f1d:"Browsers, PDF readers, IDEs, notes apps, chat windows — drag-select in any app and it triggers.",
       f2t:"Streamed output", f2d:"Tokens render as they arrive — the first word shows almost instantly, no spinner-staring.",
       f3t:"A dot by your cursor", f3d:"Youdao Dict / Bob-style: the dot hugs your selection and fades after ~2s if you don't click.",
-      f4t:"Any LLM", f4d:"OpenAI-compatible protocol — switch providers by editing one Base URL and model name. Defaults to MiniMax-M2.1.",
+      f4t:"Free MiniMax AI, or your own key", f4d:"Opens with hosted MiniMax M2.7-highspeed — no key, no signup. Switch to any OpenAI-compatible model (DeepSeek / Qwen / Zhipu / Kimi / OpenAI / Ollama) when you want full control.",
       f5t:"Windows + macOS", f5d:"One codebase, one experience. Platform differences are isolated in a single file; behavior is identical.",
       f6t:"Lives in the tray", f6d:'Pause, settings, quit — one click from the menu bar / system tray. Config stays local in <span class="mono" style="font-size:13px;">~/.translate-popup</span>.',
       howKicker:"Three steps",
@@ -444,10 +444,10 @@
       provKicker:"Your model, your call",
       provH2:'Plug in any <span class="em">OpenAI-compatible</span> service and go.',
       chipQwen:"Qwen · DashScope", chipZhipu:"Zhipu GLM", chipOllama:"Ollama (local)",
-      provFoot:'<b>Auto bi-directional:</b> select Chinese and it goes to English, select English and it goes to Chinese. Picking a provider preset auto-fills the Base URL and model name — just add your API key.',
+      provFoot:'<b>Auto bi-directional:</b> select Chinese and it goes to English, select English and it goes to Chinese. The hosted MiniMax proxy needs no key at all; switch to AI and a provider preset auto-fills the Base URL and model — just add your key.',
       installKicker:"Install",
       installH2:'A few commands,<span class="b"> and it\'s on your machine.</span>',
-      installP:"Requires Python 3. Clone, install deps, run — that's it.",
+      installP:"Opens free with no API key. Run from source with Python 3 — or build the lightweight single-file app (one small executable) with the included script.",
       copyBtn:"Copy",
       installBtnOpen:"Open on GitHub ↗", installBtnDocs:"Read the docs",
       installMac:'On macOS, first grant access under <b>System Settings → Privacy &amp; Security → Accessibility / Input Monitoring</b>, then restart.',
@@ -462,10 +462,10 @@
       heroKicker:"Windows · macOS · 开源",
       heroH1:'在任何应用里，<span class="l2"><mark>选中</mark>即译。</span>',
       heroSub:"选中，就有译文。",
-      heroP:"浏览器、PDF、IDE、聊天窗口——拖选一段文字，光标旁浮起一个蓝色「译」圆点。点它，大模型把译文逐字流式蹦出来。不用切窗口，不用按快捷键。",
+      heroP:"浏览器、PDF、IDE、聊天窗口——拖选一段文字，光标旁浮起一个蓝色「译」圆点。点它，MiniMax M2.7-highspeed 把 AI 译文流式打回来——不用 API Key、不用任何配置。托管代理由作者承担，想要完全自主可切「自带 AI 大模型」。",
       heroBtnInstall:"在 GitHub 安装 ↗",
       heroBtnDemo:"↓ 先试试效果",
-      heroNote:'接入 <b>DeepSeek · 通义千问 · 智谱 · Kimi · OpenAI · Ollama</b> 等任意 OpenAI 兼容服务。',
+      heroNote:'内置 <b>MiniMax M2.7-highspeed</b>，开箱即用——无需 API Key、无需注册。想要完全自主可接 <b>DeepSeek · 通义千问 · 智谱 · Kimi · OpenAI · Ollama</b> 等任意 OpenAI 兼容服务。',
       demoKicker:"实时演示 · TRY IT",
       demoH2:"不用安装，先在这页上试一下。",
       demoBar:"demo — 选中下面任意一句",
@@ -477,7 +477,7 @@
       f1t:"全局划词", f1d:"浏览器、PDF 阅读器、IDE、记事本、聊天软件——任何应用里拖选都能触发。",
       f2t:"流式译文", f2d:"token 实时追加渲染，第一个字几乎瞬间出现，不用盯着转圈干等。",
       f3t:"跟随光标的圆点", f3d:"有道词典 / Bob 那种顺手：圆点贴着选区出现，约 2 秒自动隐去，不点就走。",
-      f4t:"任意大模型", f4d:"OpenAI 兼容协议，换服务商只改 Base URL 和模型名。默认 MiniMax-M2.1。",
+      f4t:"免费 MiniMax AI，或接你的 Key", f4d:"内置 MiniMax M2.7-highspeed 托管 —— 无需任何 Key 就能用；想要完全自主，可切到任意 OpenAI 兼容大模型（DeepSeek / 通义千问 / 智谱 / Kimi / OpenAI / Ollama）。",
       f5t:"Windows + macOS", f5d:"同一套代码、同一种体验。平台差异只隔离在一个文件里，行为完全对齐。",
       f6t:"常驻托盘", f6d:'菜单栏 / 系统托盘一键暂停、设置、退出。配置存在本地 <span class="mono" style="font-size:13px;">~/.translate-popup</span>。',
       howKicker:"三步",
@@ -488,10 +488,10 @@
       provKicker:"你的模型，你做主",
       provH2:'插上任意 <span class="em">OpenAI-compatible</span> 服务就能跑。',
       chipQwen:"通义千问 · DashScope", chipZhipu:"智谱 GLM", chipOllama:"Ollama 本地",
-      provFoot:'<b>中英自动反向：</b>选中中文译成英文，选中英文译成中文。预设里切换服务商会自动填好 Base URL 和模型名，填上 API Key 即用。',
+      provFoot:'<b>中英自动反向：</b>选中中文译成英文，选中英文译成中文。托管 MiniMax 代理无需任何 Key；切到自带 AI 时，预设会自动填好 Base URL 和模型名，填上 API Key 即用。',
       installKicker:"安装",
       installH2:'几行命令，<span class="b">装到你的电脑。</span>',
-      installP:"需要 Python 3。克隆仓库、装依赖、跑起来——就这样。",
+      installP:"无需 API Key，打开即用。源码运行需要 Python 3；也可用自带脚本打包成轻量单文件（一个小巧的可执行程序）。",
       copyBtn:"复制",
       installBtnOpen:"在 GitHub 打开 ↗", installBtnDocs:"阅读文档",
       installMac:'macOS 首次需在 <b>系统设置 → 隐私与安全性 → 辅助功能 / 输入监控</b> 里授权后重启。',

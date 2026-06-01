@@ -1,20 +1,36 @@
-# 翻译助手 (Translate Popup)
+# 译 · 划词翻译 (Translate Popup)
 
-一个轻量的桌面工具（**Windows / macOS**）：在**任何应用**里选中文本，光标旁会出现一个 **译** 小图标，点击即用大模型流式翻译。
+一个**真·轻量**的桌面划词翻译工具（**Windows / macOS**）：在**任何应用**里选中文本，光标旁会冒出一个 **译** 小蓝点，点一下立刻出 AI 译文。
+
+> **打开即用，无需 API Key、无需注册** —— 默认就用作者代付的 **MiniMax M2.7-highspeed** 大模型（OpenAI 兼容代理，部署在 Vercel），代理失效时自动降级到 Google 免费翻译，保证「打开就能用」。
+> 想要彻底自费、自由换模型？一键切到「自带 AI 大模型」，接 DeepSeek / 通义千问 / 智谱 / Kimi / OpenAI / Ollama 等任意 OpenAI 兼容服务。
 
 > 灵感与对标：[openai-translator](https://github.com/openai-translator/openai-translator)。
 > 主要差异：openai-translator 是"选中 → 按快捷键 → 弹窗"；本项目是"选中 → 光标旁出小图标 → 点击翻译"，更接近网易有道词典 / Bob 风格。
 
-## 特性
+## 卖点
 
-- 全局划词：监听鼠标拖选，自动抓取选中文本
-- 跟随光标：在选区附近显示小图标，点击触发翻译
-- 流式输出：token 实时追加显示
-- OpenAI 兼容协议：DeepSeek、通义千问 (DashScope)、智谱 GLM、Moonshot、OpenAI、Ollama 本地等任意兼容服务
-- 系统托盘：暂停/启用、设置、退出
-- 配置持久化：`~/.translate-popup/config.json`
+- **零门槛**：默认内置 MiniMax M2.7-highspeed，普通用户什么都不用配，划词即出 AI 译文
+- **作者代付 + 自动降级**：托管代理（你的 MiniMax 国内 token plan）失效时自动回退到 Google 免费翻译，断网外的任何故障都不会让用户卡住
+- **真轻量**：HTTP 走标准库（去掉 httpx 整条依赖链），打包时只保留 3 个 Qt 模块，单文件实测约 35MB、UPX 压缩后约 32MB，远小于 PyQt6 默认 onefile 的 50–80MB
+- **全局划词**：监听鼠标拖选，任意应用（浏览器、PDF、记事本、IDE…）通吃
+- **跟随光标**：在选区附近显示小图标，点击才翻译，不打扰
+- **流式输出**：MiniMax 的 token 实时追加显示，TTFT ~亚秒
+- **可进可退**：三档引擎可切——托管 / 公共免费 / 自带 Key，互不影响
+- **开机自启**：托盘一键勾选，开机即驻留
+- **配置持久化**：`~/.translate-popup/config.json`
 
-## 安装
+## 部署托管代理（仅作者/自托管者需要做一次）
+
+代理是一个 ~80 行的 Vercel Edge 函数（`api/v1/chat/completions.mjs`），把客户端的 OpenAI 兼容请求转发到 `api.minimaxi.com`，并在服务端注入你的 MiniMax Key。
+
+1. 在 Vercel 项目设置里加环境变量：`MINIMAX_API_KEY = <你的国内版 MiniMax Key>`
+2. `vercel --prod` 部署
+3. 客户端的 `HOSTED_PROXY_BASE_URL`（`config.py`）已指向稳定生产 URL，无需改
+
+代理已经做了最小防护：白名单 MiniMax chat 模型、限制 `max_tokens`/输入长度、22s 上游超时（对齐 Vercel Hobby Edge 函数的 25s 上限）。如果担心被恶意刷量，未来可加 Vercel KV 做 IP 限频。
+
+## 安装与运行（源码）
 
 ### Windows
 
@@ -44,9 +60,21 @@ python3 main.py
 2. **系统设置 → 隐私与安全性 → 输入监控**：同样勾上。
 3. 授权后**重启**程序生效。
 
-## 首次配置
+## 翻译引擎（三档）
 
-启动后右键托盘 **译** 图标 → **设置**：
+启动后右键托盘 **译** 图标 → **设置**，顶部选引擎：
+
+### 1. 默认 · 内置 MiniMax 大模型（推荐，免费、无需配置）
+
+什么都不用填。客户端把请求打到作者部署的 Vercel 代理，代理在服务端注入 Key，转发到 MiniMax 国内端点。Key 全程不离开服务端。代理不可用时自动降级到 Google 免费翻译。
+
+### 2. 公共免费翻译（Google，非 AI）
+
+直接打 Google 公开端点。无 AI、质量一般，适合"我连作者的代理都不想走"的极简场景。
+
+### 3. 自带 AI 大模型（OpenAI 兼容）
+
+切到此档后填写：
 
 | 字段 | 示例 |
 |---|---|
@@ -56,60 +84,79 @@ python3 main.py
 | 模型 | `deepseek-chat` |
 | 目标语言 | 中文 |
 
-预设里也有通义千问、智谱、Moonshot、OpenAI、Ollama 本地等，切换预设会自动填好 Base URL 和模型名。
+预设里有 MiniMax、DeepSeek、通义千问、智谱（`glm-4-flash` 免费）、Moonshot、OpenAI、Ollama 本地等，切换预设会自动填好 Base URL 和模型名。点「测试连接」可即时校验。
 
 ## 使用
 
-1. 在任意应用（浏览器、PDF 阅读器、记事本、IDE…）里**拖动选中**一段文本
-2. 光标右下方出现蓝色 **译** 图标
-3. 点击图标 → 弹出翻译卡片，流式渲染译文
-4. 按 `Esc` 或点击 `×` 关闭，或点 **复制** 复制结果
+1. 在任意应用里**拖动选中**一段文本
+2. 光标右上方出现蓝色 **译** 圆点
+3. 点击圆点 → 弹出翻译卡片，流式渲染译文
+4. 按 `Esc` 或在别处单击关闭，卡片可拖动
 
 > 单击鼠标（没有拖动）不会触发，避免误判。
+> 中/日文本在目标语言为中文时会自动反向翻成英文，避免"翻了等于没翻"。
 
 ## 已知限制
 
 - 某些应用（PDF Reader / 部分游戏 / 沙箱里的应用）复制键拿不到选中文本，这是系统层限制
 - 触发方式依赖模拟复制键（Win: `Ctrl+C`，mac: `Cmd+C`）+ 读剪贴板，会瞬间替换剪贴板再恢复（200ms 内）
+- 托管代理与 MiniMax 的服务可用性绑定；任何一环短暂失效都会自动降级到 Google 免费翻译
 - macOS 没有"全局取当前光标形状"的公共 API，因此不做"拖窗/拖滚动条"的光标预判，全靠拖动距离 + 实际取词；最坏情况只是误弹一句"未获取到选中文本"
 
 ## 项目结构
 
 ```
 translate/
-├── main.py                # 入口，串起所有模块
-├── config.py              # 配置加载/保存
-├── llm_client.py          # OpenAI 兼容协议 + 流式
-├── selection_monitor.py   # 全局鼠标监听 + 抓取选中文本（跨平台）
-├── platform_backend.py    # 按 sys.platform 选择平台实现
-├── platform_win.py        # Windows：Win32 光标/进程判断，Ctrl+C
-├── platform_mac.py        # macOS：NSWorkspace 前台判断，Cmd+C
-├── floating_icon.py       # 跟随光标的小图标
-├── translation_popup.py   # 翻译结果卡片
-├── settings_dialog.py     # 设置对话框
-├── tray.py                # 系统托盘 / 菜单栏
-├── start_mac.command      # macOS 双击启动
+├── main.py                          # 入口，串起所有模块
+├── config.py                        # 配置加载/保存（engine + HOSTED 代理常量）
+├── http_util.py                     # 标准库 urllib 实现的极简 HTTP
+├── engines.py                       # 公共免费翻译引擎（Google + 兜底）
+├── langs.py                         # 语言方向判断 + 语言名→语言码映射
+├── llm_client.py                    # 三档引擎调度 + OpenAI 兼容流式
+├── selection_monitor.py             # 全局鼠标监听 + 抓取选中文本（跨平台）
+├── platform_backend.py              # 按 sys.platform 选择平台实现
+├── platform_win.py                  # Windows：光标/进程判断、Ctrl+C、开机自启
+├── platform_mac.py                  # macOS：前台判断、Cmd+C、开机自启
+├── floating_icon.py                 # 跟随光标的小图标
+├── translation_popup.py             # 翻译结果卡片
+├── settings_dialog.py               # 设置对话框（分引擎显隐）
+├── tray.py                          # 系统托盘 / 菜单栏
+├── api/v1/chat/completions.mjs      # Vercel Edge 代理函数（托管档后端）
+├── TranslatePopup.spec              # PyInstaller 瘦身打包配置
+├── build_win.ps1                    # Windows 一键打包脚本
+├── start_mac.command                # macOS 双击启动
 └── requirements.txt
 ```
 
-## 打包
+## 打包（瘦身单文件）
+
+打包用 `TranslatePopup.spec`，已做极致瘦身：只保留 `QtCore/QtGui/QtWidgets`，排除其余 31 个 Qt 模块与无关大包。
 
 ### Windows → exe
 
 ```powershell
+./build_win.ps1
+# 或手动：
 python -m pip install pyinstaller
-pyinstaller --noconfirm --windowed --onefile --name TranslatePopup main.py
+python -m PyInstaller --noconfirm TranslatePopup.spec
 ```
 
-产物在 `dist/TranslatePopup.exe`。
+产物在 `dist/TranslatePopup.exe`（实测约 35MB）。装了 [UPX](https://upx.github.io/) 后重打约 32MB——onefile 包本身已二次压缩，UPX 增益有限（约 10%）。
 
 ### macOS → .app
 
 ```bash
 python3 -m pip install pyinstaller
-pyinstaller --noconfirm --windowed --name TranslatePopup main.py
+python3 -m PyInstaller --noconfirm TranslatePopup.spec
 ```
 
-产物在 `dist/TranslatePopup.app`。建议在 `Info.plist` 里设 `LSUIElement=1` 让它成为
-纯菜单栏应用（不占 Dock）；分发给他人还需做代码签名 / 公证，并提示对方在「辅助功能 +
-输入监控」里授权该 App。
+产物在 `dist/TranslatePopup.app`（spec 已设 `LSUIElement=1`，纯菜单栏应用，不占 Dock）。
+分发给他人还需做代码签名 / 公证，并提示对方在「辅助功能 + 输入监控」里授权该 App。
+
+## 自测
+
+```bash
+python test_internals.py
+```
+
+覆盖：think 标签过滤、流式去前导空白、语言方向判断、语言码映射、免费引擎解析、HTTP 错误格式化、引擎端点解析、**代理失败自动降级到免费引擎**、剪贴板恢复、圆点定位等。
