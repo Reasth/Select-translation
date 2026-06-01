@@ -15,6 +15,7 @@ _launch_*.log
 
 build/
 dist/
+installer/
 *.spec
 !TranslatePopup.spec
 
