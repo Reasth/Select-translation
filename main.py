@@ -14,11 +14,14 @@ from llm_client import LLMClient
 from platform_backend import is_autostart, set_autostart
 from selection_monitor import SelectionMonitor, grab_selected_text, is_foreground_terminal
 from settings_dialog import SettingsDialog
-from translation_popup import TranslationPopup
+from translation_popup import TranslateWorker, TranslationPopup
 from tray import TrayController
 
 
 LOG_PATH = CONFIG_DIR / "app.log"
+
+# Eager 翻译最小长度。低于此长度认为是误选/单字光标停留,不预发请求,避免烧 token。
+EAGER_MIN_CHARS = 6
 
 
 def _install_logging() -> None:
@@ -49,9 +52,19 @@ class App:
         self._suppress_next_close: bool = False
         self._cached_selection_text: str = ""
 
+        # ---- Eager 翻译状态 ----
+        # 选中文本一就绪就预发请求,用户移鼠标→点圆点的几百毫秒里 API 已经在跑。
+        self._eager_text: str = ""           # 当前预翻译的原文（也用于过滤陈旧 worker 的信号）
+        self._eager_buffer: str = ""         # 累计收到的可见 token
+        self._eager_done: bool = False       # 预翻译是否完成
+        self._eager_worker: TranslateWorker | None = None
+        self._popup_consuming_text: str = ""  # 当前 popup 正在显示的 eager 对应的原文
+
         self.monitor.selection_finished.connect(self._on_selection_finished)
         self.monitor.mouse_pressed.connect(self._on_mouse_pressed)
         self.icon.clicked.connect(self._on_icon_clicked)
+        self.icon.auto_hidden.connect(self._cancel_eager)  # 圆点超时未点 = 用户放弃 → 取消预翻译
+        self.popup.closed.connect(self._on_popup_closed)
         self.tray.toggle_enabled.connect(self._on_toggle_enabled)
         self.tray.toggle_autostart.connect(self._on_toggle_autostart)
         self.tray.open_settings.connect(self._on_open_settings)
@@ -75,6 +88,7 @@ class App:
             self.monitor.stop()
             self.icon.hide()
             self._cached_selection_text = ""
+            self._cancel_eager()
 
     def _on_toggle_autostart(self, on: bool):
         if set_autostart(on):
@@ -106,6 +120,7 @@ class App:
                 return
             self.icon.hide()
             self._cached_selection_text = ""
+            self._cancel_eager()  # 点外面 = 用户放弃 → 取消预翻译
 
     def _on_selection_finished(self, press_x: int, press_y: int, release_x: int, release_y: int):
         if not self.cfg.enabled:
@@ -127,6 +142,59 @@ class App:
         if text:
             self._cached_selection_text = text
             logging.info("cached selected text len=%s", len(text))
+            self._start_eager(text)
+
+    # ---- Eager 翻译实现 ----
+
+    def _start_eager(self, text: str) -> None:
+        """选中文本一就绪就发请求。失败/取消都吃掉,等用户点击时若仍未就绪则正常回退。"""
+        if len(text) < EAGER_MIN_CHARS or len(text) > self.cfg.max_chars:
+            return
+        if self._eager_worker is not None and self._eager_text == text:
+            return  # 同一段文本已经在跑
+        self._cancel_eager()
+        self._eager_text = text
+        self._eager_buffer = ""
+        self._eager_done = False
+        worker = TranslateWorker(self.client, text)
+        owner_text = text  # 闭包捕获,过滤陈旧 worker 的信号
+        worker.token_received.connect(lambda tok: self._on_eager_token(owner_text, tok))
+        worker.finished_translation.connect(lambda: self._on_eager_finished(owner_text))
+        self._eager_worker = worker
+        worker.start()
+        logging.info("eager started len=%s", len(text))
+
+    def _cancel_eager(self) -> None:
+        if self._eager_worker is not None:
+            try:
+                if self._eager_worker.isRunning():
+                    self._eager_worker.requestInterruption()
+                    self._eager_worker.quit()
+            except RuntimeError:
+                pass
+            self._eager_worker.deleteLater()
+            self._eager_worker = None
+        self._eager_text = ""
+        self._eager_buffer = ""
+        self._eager_done = False
+
+    def _on_eager_token(self, owner_text: str, token: str) -> None:
+        if owner_text != self._eager_text:
+            return  # 陈旧 worker 的尾巴信号,丢弃
+        self._eager_buffer += token
+        if self._popup_consuming_text == owner_text and self.popup.isVisible():
+            self.popup.append_eager_token(token)
+
+    def _on_eager_finished(self, owner_text: str) -> None:
+        if owner_text != self._eager_text:
+            return
+        self._eager_done = True
+        if self._popup_consuming_text == owner_text and self.popup.isVisible():
+            self.popup.mark_eager_done()
+
+    def _on_popup_closed(self) -> None:
+        self._popup_consuming_text = ""
+        self._cancel_eager()
 
     def _on_icon_clicked(self):
         self._suppress_next_close = True
@@ -138,7 +206,17 @@ class App:
             self.popup.reveal_at(anchor=bubble_anchor)
             return
         self._cached_selection_text = ""
-        self.popup.start_translation(text)
+        if text == self._eager_text and self._eager_worker is not None:
+            # Eager 命中:接管已经在跑/已经完成的预翻译,buffer 立即显示,后续 token 继续追加
+            self._popup_consuming_text = text
+            self.popup.present_eager(self._eager_buffer)
+            if self._eager_done:
+                self.popup.mark_eager_done()
+            logging.info("icon click adopted eager (buffered %s chars, done=%s)", len(self._eager_buffer), self._eager_done)
+        else:
+            # 没命中(文本变了/小于阈值/无 eager),走原路新发请求
+            self._popup_consuming_text = ""
+            self.popup.start_translation(text)
         self.popup.reveal_at(anchor=bubble_anchor)
 
 

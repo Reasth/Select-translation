@@ -107,6 +107,8 @@ class TranslationPopup(QWidget):
     PAD_V = 8
     SHADOW_PAD = 10
 
+    closed = pyqtSignal()  # 隐藏（关闭）时发出 → 上层据此取消 eager worker
+
     def __init__(self, client: LLMClient):
         super().__init__()
         self.client = client
@@ -186,6 +188,32 @@ class TranslationPopup(QWidget):
         self._position_near(anchor)
         self.show()
         self.raise_()
+
+    def present_eager(self, buffer: str) -> None:
+        """以一段 eager 已收的 buffer 起头展示;后续 token 由上层 append_eager_token 推。"""
+        self.cancel_translation()  # 清掉任何内部 worker
+        self._buffer = buffer
+        if buffer:
+            self.loading.stop()
+            self.result_label.show()
+            self.result_label.setText(buffer)
+            self._resize_to_text()
+        else:
+            self._show_loading()
+
+    def append_eager_token(self, token: str) -> None:
+        """上层 eager worker 触发的新 token 转发进来。复用 _on_token 处理 loading→text 切换。"""
+        self._on_token(token)
+
+    def mark_eager_done(self) -> None:
+        """Eager 流结束。如果缓冲还空说明真没拿到内容,显示提示。"""
+        self.loading.stop()
+        if not self._buffer:
+            self.show_message("未收到翻译内容。")
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self.closed.emit()
 
     def _on_token(self, token: str):
         if not self._buffer:

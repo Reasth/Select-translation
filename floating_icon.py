@@ -9,6 +9,7 @@ class FloatingIcon(QWidget):
     """选中文本后在鼠标位置右上方显示的彩色小圆点。点击时再触发抓取+翻译。"""
 
     clicked = pyqtSignal()
+    auto_hidden = pyqtSignal()  # 超时自动隐藏（≠ 用户点击触发的 hide）→ 上层据此取消 eager 请求
 
     SIZE = 16
     DOT_SIZE = 9
@@ -29,6 +30,7 @@ class FloatingIcon(QWidget):
         self._auto_hide = QTimer(self)
         self._auto_hide.setSingleShot(True)
         self._auto_hide.timeout.connect(self.hide)
+        self._auto_hide.timeout.connect(self.auto_hidden.emit)
 
     def show_near_cursor(self, anchor_x: int, anchor_y: int, lifetime_ms: int = 4000) -> None:
         """贴着选区右上角 (anchor_x, anchor_y) 的右上方显示。坐标应为 Qt 逻辑坐标。"""
