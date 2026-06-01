@@ -1,12 +1,26 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
-from typing import Iterator
+from typing import Iterator, Optional
 
-import httpx
+import engines
+import http_util
+from config import (
+    HOSTED_DEFAULT_MODEL,
+    HOSTED_PROXY_BASE_URL,
+    Config,
+    normalize_base_url,
+)
+from langs import resolve_target_lang  # re-export: 旧代码与测试从 llm_client 引用
 
-from config import Config, normalize_base_url
+__all__ = [
+    "ConnectionCheckResult",
+    "LLMClient",
+    "check_connection",
+    "resolve_target_lang",
+]
 
 
 _THINK_OPEN = "<think>"
@@ -19,96 +33,80 @@ class ConnectionCheckResult:
     message: str
 
 
-def _contains_cjk(text: str) -> bool:
-    for ch in text:
-        if "\u4e00" <= ch <= "\u9fff" or "\u3040" <= ch <= "\u30ff":
-            return True
-    return False
-
-
-def _is_chinese_target(target: str) -> bool:
-    t = target.strip().lower()
-    return "中" in target or t in {
-        "zh",
-        "zh-cn",
-        "zh_cn",
-        "chinese",
-        "simplified chinese",
-        "chinese (simplified)",
+def _build_chat_payload(
+    cfg: Config,
+    text: str,
+    *,
+    model: str,
+    stream: bool,
+    max_tokens: Optional[int] = None,
+) -> dict:
+    actual_target = resolve_target_lang(text, cfg.target_lang)
+    payload: dict = {
+        "model": model,
+        "stream": stream,
+        "messages": [
+            {"role": "system", "content": cfg.system_prompt.format(target_lang=actual_target)},
+            {"role": "user", "content": text},
+        ],
+        "temperature": 0.2,
     }
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
+    return payload
 
 
-def resolve_target_lang(text: str, default_target: str) -> str:
-    """Reverse direction when Chinese/Japanese source is already targeting Chinese."""
-    if _contains_cjk(text) and _is_chinese_target(default_target):
-        return "English"
-    return default_target
+def _resolve_endpoint(cfg: Config) -> tuple[str, str, Optional[str], Optional[str]]:
+    """返回 (base_url, model, auth_token, precheck_error)。
+    precheck_error 非空时说明用户缺关键配置，应直接把它当作 [..] 提示展示。
+    auth_token 为 None 时不发 Authorization 头（hosted 不需要）。
+    """
+    if cfg.engine == "hosted":
+        return HOSTED_PROXY_BASE_URL, HOSTED_DEFAULT_MODEL, None, None
 
-
-def _short_error(status_code: int, body: str) -> str:
-    body = (body or "").strip()
-    if not body:
-        return f"HTTP {status_code}"
-    try:
-        payload = json.loads(body)
-        err = payload.get("error") if isinstance(payload, dict) else None
-        if isinstance(err, dict):
-            body = err.get("message") or err.get("type") or body
-        elif isinstance(err, str):
-            body = err
-    except json.JSONDecodeError:
-        pass
-    return f"HTTP {status_code}: {body[:300]}"
+    base_url = normalize_base_url(cfg.base_url)
+    model = cfg.model.strip()
+    api_key = cfg.api_key.strip()
+    if not base_url:
+        return "", "", None, "请先填写 Base URL。"
+    if not model:
+        return "", "", None, "请先填写模型名称。"
+    if not api_key:
+        return "", "", None, "请先填写 API Key。"
+    return base_url, model, api_key, None
 
 
 def check_connection(cfg: Config, sample_text: str = "Hello") -> ConnectionCheckResult:
-    """Make a small non-streaming request to verify the current API settings."""
-    api_key = cfg.api_key.strip()
-    base_url = normalize_base_url(cfg.base_url)
-    model = cfg.model.strip()
-    if not api_key:
-        return ConnectionCheckResult(False, "请先填写 API Key。")
-    if not base_url:
-        return ConnectionCheckResult(False, "请先填写 Base URL。")
-    if not model:
-        return ConnectionCheckResult(False, "请先填写模型名称。")
+    """验证当前翻译设置是否可用。"""
+    if cfg.engine == "free":
+        ok, message = engines.check_free_engine(sample_text)
+        return ConnectionCheckResult(ok, message)
 
-    actual_target = resolve_target_lang(sample_text, cfg.target_lang)
-    payload = {
-        "model": model,
-        "stream": False,
-        "messages": [
-            {"role": "system", "content": cfg.system_prompt.format(target_lang=actual_target)},
-            {"role": "user", "content": sample_text},
-        ],
-        "temperature": 0.2,
-        "max_tokens": 64,
-    }
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    try:
-        response = httpx.post(
-            base_url + "/chat/completions",
-            json=payload,
-            headers=headers,
-            timeout=30.0,
-        )
-    except httpx.HTTPError as exc:
-        return ConnectionCheckResult(False, f"网络连接失败：{exc}")
+    base_url, model, auth_token, err = _resolve_endpoint(cfg)
+    if err:
+        return ConnectionCheckResult(False, err)
 
-    if response.status_code != 200:
-        return ConnectionCheckResult(False, _short_error(response.status_code, response.text))
+    headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+    payload = _build_chat_payload(cfg, sample_text, model=model, stream=False, max_tokens=64)
+    res = http_util.post_json(
+        base_url + "/chat/completions",
+        payload,
+        headers=headers,
+        timeout=30.0,
+    )
+    if not res.ok:
+        return ConnectionCheckResult(False, res.error or f"HTTP {res.status}")
 
     try:
-        data = response.json()
+        data = json.loads(res.text)
         choices = data.get("choices") or []
         content = ((choices[0].get("message") or {}).get("content") or "").strip() if choices else ""
     except Exception:
         content = ""
     if not content:
-        return ConnectionCheckResult(False, "接口已返回 200，但没有返回翻译内容。请检查模型名称。")
+        return ConnectionCheckResult(False, "接口已返回 200，但没有翻译内容。请检查模型名称。")
+    if cfg.engine == "hosted":
+        return ConnectionCheckResult(True, "托管代理可用，MiniMax 已就绪。")
     return ConnectionCheckResult(True, "连接成功，API Key 和模型可用。")
 
 
@@ -169,69 +167,72 @@ class LLMClient:
     def __init__(self, cfg: Config):
         self.cfg = cfg
 
-    def _raw_stream(self, text: str) -> Iterator[str]:
-        cfg = self.cfg
-        api_key = cfg.api_key.strip()
-        base_url = normalize_base_url(cfg.base_url)
-        model = cfg.model.strip()
-        if not api_key:
-            yield "[未配置 API Key，请在系统托盘菜单 → 设置 中填写]"
-            return
-        if not base_url:
-            yield "[未配置 Base URL，请在系统托盘菜单 → 设置 中填写]"
-            return
-        if not model:
-            yield "[未配置模型名称，请在系统托盘菜单 → 设置 中填写]"
-            return
+    def _stream_openai_compat(
+        self,
+        text: str,
+        *,
+        base_url: str,
+        model: str,
+        auth_token: Optional[str],
+    ) -> Iterator[str]:
+        """通用 OpenAI 兼容流式调用。网络/HTTP 错误向上抛 HttpStreamError。"""
+        headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+        payload = _build_chat_payload(self.cfg, text, model=model, stream=True)
+        for raw in http_util.stream_post_lines(
+            base_url + "/chat/completions",
+            payload,
+            headers=headers,
+            timeout=60.0,
+        ):
+            line = raw.strip()
+            if not line:
+                continue
+            if line.startswith("data: "):
+                line = line[6:]
+            if line == "[DONE]":
+                break
+            try:
+                chunk = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            choices = chunk.get("choices") or []
+            if not choices:
+                continue
+            delta = choices[0].get("delta") or {}
+            token = delta.get("content")
+            if token:
+                yield token
 
-        actual_target = resolve_target_lang(text, cfg.target_lang)
-        system_prompt = cfg.system_prompt.format(target_lang=actual_target)
-        payload = {
-            "model": model,
-            "stream": True,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": text},
-            ],
-            "temperature": 0.2,
-        }
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
-
+    def _ai_stream(self, text: str) -> Iterator[str]:
+        """AI 档：缺配置或网络错误以 [..] 形式回显，便于排查自家 Key。"""
+        base_url, model, auth_token, err = _resolve_endpoint(self.cfg)
+        if err:
+            yield f"[{err}]"
+            return
         try:
-            with httpx.stream(
-                "POST",
-                base_url + "/chat/completions",
-                json=payload,
-                headers=headers,
-                timeout=60.0,
-            ) as r:
-                if r.status_code != 200:
-                    body = r.read().decode("utf-8", errors="ignore")
-                    yield f"[{_short_error(r.status_code, body)}]"
-                    return
-                for line in r.iter_lines():
-                    if not line:
-                        continue
-                    if line.startswith("data: "):
-                        line = line[6:]
-                    if line.strip() == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    choices = chunk.get("choices") or []
-                    if not choices:
-                        continue
-                    delta = choices[0].get("delta") or {}
-                    token = delta.get("content")
-                    if token:
-                        yield token
-        except httpx.HTTPError as e:
-            yield f"[网络错误] {e}"
+            yield from self._stream_openai_compat(
+                text, base_url=base_url, model=model, auth_token=auth_token
+            )
+        except http_util.HttpStreamError as e:
+            yield f"[{e.message}]"
+
+    def _hosted_stream(self, text: str) -> Iterator[str]:
+        """托管档：用作者代付的代理；失败时静默降级到免费引擎，保证「打开就能翻译」。"""
+        try:
+            yield from self._stream_openai_compat(
+                text,
+                base_url=HOSTED_PROXY_BASE_URL,
+                model=HOSTED_DEFAULT_MODEL,
+                auth_token=None,
+            )
+        except http_util.HttpStreamError as e:
+            logging.warning("hosted engine failed (%s), falling back to free", e.message)
+            yield from engines.stream_free_translate(text, self.cfg.target_lang)
 
     def stream_translate(self, text: str) -> Iterator[str]:
-        yield from _strip_leading_whitespace(_filter_think(self._raw_stream(text)))
+        engine = self.cfg.engine
+        if engine == "free":
+            yield from engines.stream_free_translate(text, self.cfg.target_lang)
+            return
+        source = self._hosted_stream(text) if engine == "hosted" else self._ai_stream(text)
+        yield from _strip_leading_whitespace(_filter_think(source))

@@ -1,5 +1,5 @@
 PyQt6>=6.6
 pynput>=1.7.6
 pyperclip>=1.8.2
-httpx>=0.27.0
 pyobjc-framework-Cocoa>=10.0; sys_platform == "darwin"
+# HTTP 走标准库 urllib（见 http_util.py），不再依赖 httpx。

@@ -45,6 +45,105 @@ def test_resolve_target_lang():
     assert resolve_target_lang("123 !!!", "中文") == "中文"
 
 
+def test_lang_to_code():
+    from langs import lang_to_code
+    assert lang_to_code("中文") == "zh-CN"
+    assert lang_to_code("简体中文") == "zh-CN"
+    assert lang_to_code("English") == "en"
+    assert lang_to_code("english") == "en"
+    assert lang_to_code("日本語") == "ja"
+    assert lang_to_code("韩语") == "ko"
+    assert lang_to_code("繁体中文") == "zh-TW"
+    # 未知语言名 → 回落到默认值
+    assert lang_to_code("克林贡语") == "en"
+    assert lang_to_code("", default="zh-CN") == "zh-CN"
+
+
+def test_engine_parse_primary():
+    from engines import _parse_primary
+    # Google translate_a/single 的真实结构：data[0] 是分段列表，seg[0] 是译文块
+    raw = '[[["你好世界","Hello world",null,null,3]],null,"en"]'
+    assert _parse_primary(raw) == "你好世界"
+    # 多分段应拼接
+    raw2 = '[[["第一句。","S1."],["第二句。","S2."]],null,"en"]'
+    assert _parse_primary(raw2) == "第一句。第二句。"
+    # 损坏的 JSON → None（触发兜底）
+    assert _parse_primary("not json") is None
+    assert _parse_primary("[]") is None
+
+
+def test_engine_parse_fallback():
+    from engines import _parse_fallback
+    # clients5 的结构：[["译文","源语言"]]
+    assert _parse_fallback('[["Hello world","fr"]]') == "Hello world"
+    assert _parse_fallback('[["A","fr"],["B","fr"]]') == "AB"
+    assert _parse_fallback("garbage") is None
+
+
+def test_short_error_formats_json_message():
+    from http_util import short_error
+    body = '{"error": {"message": "invalid api key", "type": "auth"}}'
+    assert short_error(401, body) == "HTTP 401: invalid api key"
+    assert short_error(500, "") == "HTTP 500"
+    # 非 JSON 体也能压成一行
+    assert short_error(404, "Not Found").startswith("HTTP 404: Not Found")
+
+
+def test_resolve_endpoint_picks_hosted_constants():
+    from config import Config, HOSTED_PROXY_BASE_URL, HOSTED_DEFAULT_MODEL
+    from llm_client import _resolve_endpoint
+
+    cfg = Config()  # engine="hosted" by default
+    base_url, model, auth, err = _resolve_endpoint(cfg)
+    assert err is None
+    assert base_url == HOSTED_PROXY_BASE_URL
+    assert model == HOSTED_DEFAULT_MODEL
+    assert auth is None  # hosted 不带 Authorization 头
+
+
+def test_resolve_endpoint_ai_requires_key():
+    from config import Config
+    from llm_client import _resolve_endpoint
+
+    cfg = Config(engine="ai", base_url="https://x.example/v1", model="m", api_key="")
+    _, _, _, err = _resolve_endpoint(cfg)
+    assert err and "API Key" in err
+
+    cfg2 = Config(engine="ai", base_url="https://x.example/v1", model="m", api_key="sk-xyz")
+    base, model, auth, err2 = _resolve_endpoint(cfg2)
+    assert err2 is None
+    assert base == "https://x.example/v1"
+    assert auth == "sk-xyz"
+
+
+def test_hosted_falls_back_to_free_when_proxy_fails():
+    """代理挂了时,翻译应自动降级到免费引擎,保证「打开就能用」。"""
+    import http_util
+    import engines
+    from config import Config
+    from llm_client import LLMClient
+
+    def fail_stream(*args, **kwargs):
+        raise http_util.HttpStreamError("simulated proxy 502")
+        yield  # 让 Python 把它识别为生成器函数
+
+    def fake_free(text, target):
+        yield "FREE_FALLBACK_TOKEN"
+
+    orig_stream = http_util.stream_post_lines
+    orig_free = engines.stream_free_translate
+    try:
+        http_util.stream_post_lines = fail_stream
+        engines.stream_free_translate = fake_free
+        cfg = Config()  # engine=hosted
+        out = "".join(LLMClient(cfg).stream_translate("hello"))
+    finally:
+        http_util.stream_post_lines = orig_stream
+        engines.stream_free_translate = orig_free
+
+    assert out == "FREE_FALLBACK_TOKEN", f"got: {out!r}"
+
+
 def test_normalize_base_url_accepts_full_chat_endpoint():
     from config import normalize_base_url
 
@@ -113,6 +212,13 @@ def main():
         test_filter_think_unclosed_block_dropped,
         test_stream_strips_leading_whitespace,
         test_resolve_target_lang,
+        test_lang_to_code,
+        test_engine_parse_primary,
+        test_engine_parse_fallback,
+        test_short_error_formats_json_message,
+        test_resolve_endpoint_picks_hosted_constants,
+        test_resolve_endpoint_ai_requires_key,
+        test_hosted_falls_back_to_free_when_proxy_fails,
         test_normalize_base_url_accepts_full_chat_endpoint,
         test_grab_restores_clipboard_when_no_selection,
         test_floating_icon_construct_and_position,
