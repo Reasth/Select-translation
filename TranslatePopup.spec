@@ -52,6 +52,50 @@ a = Analysis(
     excludes=_qt_excludes + _other_excludes,
     noarchive=False,
 )
+
+# 用不到的 Qt 插件、translations、QtNetwork 残留 DLL 进一步剔除。
+# 保留：platforms(qwindows.dll)、styles、platformthemes、xcbglintegrations(non-win 无影响)。
+_PLUGIN_KILL_PATHS = (
+    "PyQt6/Qt6/plugins/imageformats",
+    "PyQt6/Qt6/plugins/iconengines",
+    "PyQt6/Qt6/plugins/networkinformation",
+    "PyQt6/Qt6/plugins/tls",
+    "PyQt6/Qt6/plugins/generic",
+    "PyQt6/Qt6/plugins/sqldrivers",
+    "PyQt6/Qt6/plugins/multimedia",
+    "PyQt6/Qt6/plugins/printsupport",
+    "PyQt6/Qt6/plugins/sceneparsers",
+    "PyQt6/Qt6/translations",
+)
+_DLL_KILL_NAMES = (
+    "qt6network", "qt6qml", "qt6quick", "qt6quickwidgets",
+    "qt6sql", "qt6test", "qt6pdf", "qt6opengl", "qt6printsupport",
+    "qt6multimedia", "qt6svg", "qt6dbus", "qt6designercomponents",
+    "libegl", "libgles",  # GL ES，PyQt6 在 Windows 上不一定真需要
+)
+
+
+def _norm(s):
+    return s.replace("\\", "/").lower()
+
+
+def _prune(seq):
+    out = []
+    for item in seq:
+        name = _norm(item[0])
+        src = _norm(item[1]) if len(item) > 1 and item[1] else ""
+        if any(p.lower() in name or p.lower() in src for p in _PLUGIN_KILL_PATHS):
+            continue
+        base = name.rsplit("/", 1)[-1]
+        if any(base.startswith(d) for d in _DLL_KILL_NAMES):
+            continue
+        out.append(item)
+    return out
+
+
+a.binaries = _prune(a.binaries)
+a.datas = _prune(a.datas)
+
 pyz = PYZ(a.pure)
 
 if sys.platform == "darwin":
