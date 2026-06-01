@@ -16,6 +16,7 @@ _launch_*.log
 build/
 dist/
 *.spec
+!TranslatePopup.spec
 
 .pytest_cache/
 .mypy_cache/
@@ -23,3 +24,4 @@ dist/
 
 .idea/
 .vscode/
+.vercel
