@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import statistics
+import shutil
 import subprocess
 import sys
 from collections import Counter
@@ -26,13 +26,29 @@ from collections import Counter
 METRIC_PREFIX = "METRIC "
 
 
+def _vercel_executable() -> str:
+    """Windows 上 vercel CLI 装的是 vercel.cmd；shutil.which 能找到带扩展名的实际路径。"""
+    for name in ("vercel", "vercel.cmd", "vercel.exe"):
+        found = shutil.which(name)
+        if found:
+            return found
+    return ""
+
+
 def fetch_logs(since: str) -> str:
-    cmd = ["vercel", "logs", "translate", "--json", "--since", since]
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=False)
-    except FileNotFoundError:
+    exe = _vercel_executable()
+    if not exe:
         print("ERROR: 找不到 vercel CLI。先 `npm i -g vercel` 或 `winget install Vercel.Vercel`。", file=sys.stderr)
         sys.exit(2)
+    # 不带 positional：让 vercel CLI 用 .vercel/project.json 里链接的项目。
+    # --no-branch 关掉「按当前分支过滤」（默认会过滤掉非 main 分支的日志）。
+    cmd = [exe, "logs", "--json", "--no-branch", "--since", since]
+    try:
+        # 强制 UTF-8 解码;Windows 默认 cp936 解 vercel 输出会在中文/Unicode 上炸。
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=120, check=False,
+            encoding="utf-8", errors="replace",
+        )
     except subprocess.TimeoutExpired:
         print("ERROR: `vercel logs` 超时。换更短的 --since 或检查网络。", file=sys.stderr)
         sys.exit(2)
