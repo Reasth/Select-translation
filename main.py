@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import time
 import traceback
 
 from PyQt6.QtCore import QTimer
@@ -14,6 +15,7 @@ from llm_client import LLMClient
 from platform_backend import is_autostart, set_autostart
 from selection_monitor import SelectionMonitor, grab_selected_text, is_foreground_terminal
 from settings_dialog import SettingsDialog
+from telemetry import Telemetry, ensure_install_id, new_session_id
 from translation_popup import TranslateWorker, TranslationPopup
 from tray import TrayController
 
@@ -43,7 +45,16 @@ def _install_logging() -> None:
 class App:
     def __init__(self):
         self.cfg = Config.load()
+        # 匿名 install_id 在首次启动生成并落库;session_id 每次启动随机不持久。
+        install_id = ensure_install_id(self.cfg)
+        session_id = new_session_id()
+        self.telemetry = Telemetry(install_id, session_id)
+
         self.client = LLMClient(self.cfg)
+        # 让 hosted 翻译请求的 X-Install-Id / X-Session-Id 和事件用同一对 ID,
+        # 这样代理端 metric 行能与客户端事件在 events 表里 JOIN。
+        self.client.install_id = install_id
+        self.client.session_id = session_id
 
         self.icon = FloatingIcon()
         self.popup = TranslationPopup(self.client)
@@ -63,12 +74,27 @@ class App:
         self.monitor.selection_finished.connect(self._on_selection_finished)
         self.monitor.mouse_pressed.connect(self._on_mouse_pressed)
         self.icon.clicked.connect(self._on_icon_clicked)
-        self.icon.auto_hidden.connect(self._cancel_eager)  # 圆点超时未点 = 用户放弃 → 取消预翻译
+        self.icon.auto_hidden.connect(self._on_icon_auto_hidden)
         self.popup.closed.connect(self._on_popup_closed)
         self.tray.toggle_enabled.connect(self._on_toggle_enabled)
         self.tray.toggle_autostart.connect(self._on_toggle_autostart)
         self.tray.open_settings.connect(self._on_open_settings)
         self.tray.quit_app.connect(QApplication.instance().quit)
+
+        # app 退出时发一次 app_quit;先 connect 这里,后面 main() 再发 app_start。
+        QApplication.instance().aboutToQuit.connect(
+            lambda: self.telemetry.fire("app_quit")
+        )
+
+        self.telemetry.fire(
+            "app_start",
+            {
+                "engine": self.cfg.engine,
+                "target_lang": self.cfg.target_lang,
+                "autostart": self.cfg.autostart,
+                "enabled": self.cfg.enabled,
+            },
+        )
 
         if self.cfg.enabled:
             self.monitor.start()
@@ -82,27 +108,46 @@ class App:
     def _on_toggle_enabled(self, on: bool):
         self.cfg.enabled = on
         self.cfg.save()
+        self.telemetry.fire("tray_enabled_changed", {"enabled": on})
         if on:
             self.monitor.start()
         else:
             self.monitor.stop()
             self.icon.hide()
             self._cached_selection_text = ""
-            self._cancel_eager()
+            self._cancel_eager(reason="disabled")
 
     def _on_toggle_autostart(self, on: bool):
         if set_autostart(on):
             self.cfg.autostart = on
             self.cfg.save()
+            self.telemetry.fire("tray_autostart_changed", {"on": on})
         else:
             self.tray.set_autostart_checked(is_autostart())
             self.tray.notify("开机自启", "设置开机自启失败，请检查系统权限。")
+            self.telemetry.fire("tray_autostart_changed", {"on": False, "failed": True})
 
     def _on_open_settings(self):
+        self.telemetry.fire("settings_opened")
+        prev_engine = self.cfg.engine
+        prev_lang = self.cfg.target_lang
+        prev_model = self.cfg.model
         dlg = SettingsDialog(self.cfg)
         if dlg.exec():
             dlg.apply_to(self.cfg)
             self.client.cfg = self.cfg
+            self.telemetry.fire("settings_saved", {
+                "engine_changed": prev_engine != self.cfg.engine,
+                "lang_changed": prev_lang != self.cfg.target_lang,
+                "model_changed": prev_model != self.cfg.model,
+                "engine": self.cfg.engine,
+                "target_lang": self.cfg.target_lang,
+            })
+            if prev_engine != self.cfg.engine or prev_lang != self.cfg.target_lang:
+                # 引擎/语言变了,丢掉旧的预翻译——它可能是错引擎或错方向出的。
+                self._cancel_eager(reason="settings_changed")
+        else:
+            self.telemetry.fire("settings_cancelled")
 
     def _on_mouse_pressed(self):
         QTimer.singleShot(0, self._maybe_hide_icon)
@@ -120,7 +165,7 @@ class App:
                 return
             self.icon.hide()
             self._cached_selection_text = ""
-            self._cancel_eager()  # 点外面 = 用户放弃 → 取消预翻译
+            self._cancel_eager(reason="icon_abandoned")  # 点外面 = 用户放弃
 
     def _on_selection_finished(self, press_x: int, press_y: int, release_x: int, release_y: int):
         if not self.cfg.enabled:
@@ -132,7 +177,10 @@ class App:
         ly = int(top_y / ratio)
         self._cached_selection_text = ""
         self.icon.show_near_cursor(lx, ly, lifetime_ms=self.cfg.show_icon_ms)
-        if is_foreground_terminal():
+        drag_px = max(abs(release_x - press_x), abs(release_y - press_y))
+        terminal_fg = is_foreground_terminal()
+        self.telemetry.fire("icon_shown", {"drag_px": drag_px, "terminal_fg": terminal_fg})
+        if terminal_fg:
             logging.info("skip eager selection cache for terminal foreground window")
         else:
             QTimer.singleShot(80, self._cache_selected_text)
@@ -142,6 +190,7 @@ class App:
         if text:
             self._cached_selection_text = text
             logging.info("cached selected text len=%s", len(text))
+            self.telemetry.fire("selection_cached", {"len": len(text)})
             self._start_eager(text)
 
     # ---- Eager 翻译实现 ----
@@ -152,10 +201,11 @@ class App:
             return
         if self._eager_worker is not None and self._eager_text == text:
             return  # 同一段文本已经在跑
-        self._cancel_eager()
+        self._cancel_eager(reason="new_selection")
         self._eager_text = text
         self._eager_buffer = ""
         self._eager_done = False
+        self._eager_started_at = time.monotonic()
         worker = TranslateWorker(self.client, text, source="eager")
         owner_text = text  # 闭包捕获,过滤陈旧 worker 的信号
         worker.token_received.connect(lambda tok: self._on_eager_token(owner_text, tok))
@@ -163,17 +213,25 @@ class App:
         self._eager_worker = worker
         worker.start()
         logging.info("eager started len=%s", len(text))
+        self.telemetry.fire("eager_started", {"len": len(text)})
 
-    def _cancel_eager(self) -> None:
+    def _cancel_eager(self, *, reason: str = "other") -> None:
+        was_running = False
         if self._eager_worker is not None:
             try:
-                if self._eager_worker.isRunning():
+                was_running = self._eager_worker.isRunning()
+                if was_running:
                     self._eager_worker.requestInterruption()
                     self._eager_worker.quit()
             except RuntimeError:
                 pass
             self._eager_worker.deleteLater()
             self._eager_worker = None
+        if was_running:
+            self.telemetry.fire("eager_cancelled", {
+                "reason": reason,
+                "buffered_chars": len(self._eager_buffer),
+            })
         self._eager_text = ""
         self._eager_buffer = ""
         self._eager_done = False
@@ -191,19 +249,39 @@ class App:
         self._eager_done = True
         if self._popup_consuming_text == owner_text and self.popup.isVisible():
             self.popup.mark_eager_done()
+        dt_ms = int((time.monotonic() - getattr(self, "_eager_started_at", time.monotonic())) * 1000)
+        self.telemetry.fire("eager_completed", {
+            "chars": len(self._eager_buffer),
+            "duration_ms": dt_ms,
+            "adopted": self._popup_consuming_text == owner_text,
+        })
 
     def _on_popup_closed(self) -> None:
+        self.telemetry.fire("popup_closed", {
+            "buffered_chars": len(self._eager_buffer),
+            "eager_done": self._eager_done,
+            "consumed_eager": bool(self._popup_consuming_text),
+        })
         self._popup_consuming_text = ""
-        self._cancel_eager()
+        self._cancel_eager(reason="popup_closed")
+
+    def _on_icon_auto_hidden(self) -> None:
+        self.telemetry.fire("icon_auto_hidden", {"had_eager": self._eager_worker is not None})
+        self._cancel_eager(reason="icon_timeout")
 
     def _on_icon_clicked(self):
         self._suppress_next_close = True
         bubble_anchor = self.icon.dot_center_global()
         text = self._cached_selection_text or grab_selected_text()
         logging.info("icon clicked, selected text len=%s cached=%s", len(text), bool(self._cached_selection_text))
+        self.telemetry.fire("icon_clicked", {
+            "text_len": len(text),
+            "from_cache": bool(self._cached_selection_text),
+        })
         if len(text) < self.cfg.min_chars or len(text) > self.cfg.max_chars:
             self.popup.show_message("未获取到选中文本，请重新划词后再点圆点。")
             self.popup.reveal_at(anchor=bubble_anchor)
+            self.telemetry.fire("translation_failed", {"reason": "no_text", "len": len(text)})
             return
         self._cached_selection_text = ""
         if text == self._eager_text and self._eager_worker is not None:
@@ -213,11 +291,25 @@ class App:
             if self._eager_done:
                 self.popup.mark_eager_done()
             logging.info("icon click adopted eager (buffered %s chars, done=%s)", len(self._eager_buffer), self._eager_done)
+            self.telemetry.fire("eager_adopted", {
+                "buffered_chars": len(self._eager_buffer),
+                "eager_done": self._eager_done,
+                "text_len": len(text),
+            })
         else:
             # 没命中(文本变了/小于阈值/无 eager),走原路新发请求
             self._popup_consuming_text = ""
             self.popup.start_translation(text)
+            self.telemetry.fire("translation_started", {
+                "text_len": len(text),
+                "eager_existed": self._eager_text != "",
+                "eager_text_mismatch": self._eager_text != "" and self._eager_text != text,
+            })
         self.popup.reveal_at(anchor=bubble_anchor)
+        self.telemetry.fire("popup_shown", {
+            "engine": self.cfg.engine,
+            "adopted_eager": text == self._eager_text and self._eager_worker is not None,
+        })
 
 
 def main():
