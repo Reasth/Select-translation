@@ -17,6 +17,7 @@ import sys
 if sys.platform == "darwin":
     from platform_mac import (
         COPY_MODIFIER,
+        foreground_app,
         is_autostart,
         is_foreground_terminal,
         is_non_text_cursor,
@@ -25,6 +26,7 @@ if sys.platform == "darwin":
 elif sys.platform == "win32":
     from platform_win import (
         COPY_MODIFIER,
+        foreground_app,
         is_autostart,
         is_foreground_terminal,
         is_non_text_cursor,
@@ -42,6 +44,9 @@ else:
     def is_foreground_terminal() -> bool:
         return False
 
+    def foreground_app() -> tuple[str, str]:
+        return ("", "")
+
     def set_autostart(enabled: bool) -> bool:
         return False
 
@@ -51,6 +56,7 @@ else:
 
 __all__ = [
     "COPY_MODIFIER",
+    "foreground_app",
     "is_foreground_terminal",
     "is_non_text_cursor",
     "set_autostart",

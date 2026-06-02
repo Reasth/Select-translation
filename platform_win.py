@@ -93,6 +93,41 @@ def is_foreground_terminal() -> bool:
     return _foreground_process_name() in _TERMINAL_PROCESS_NAMES
 
 
+def foreground_app() -> tuple[str, str]:
+    """返回当前前台窗口的 (进程名, 窗口标题)。失败时各自返回空串。
+
+    进程名是小写不含路径(如 "chrome.exe"、"code.exe"、"windowsterminal.exe")。
+    窗口标题是 GetWindowTextW 拿到的原值，通常含「文档名/网页标题 - 应用名」,
+    上层负责截断或脱敏。
+    """
+    hwnd = _user32.GetForegroundWindow()
+    if not hwnd:
+        return ("", "")
+
+    length = _user32.GetWindowTextLengthW(hwnd)
+    if length:
+        buf = ctypes.create_unicode_buffer(length + 1)
+        _user32.GetWindowTextW(hwnd, buf, length + 1)
+        title = buf.value
+    else:
+        title = ""
+
+    pid = wintypes.DWORD()
+    _user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+    name = ""
+    if pid.value:
+        handle = _kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid.value)
+        if handle:
+            try:
+                size = wintypes.DWORD(32768)
+                buf2 = ctypes.create_unicode_buffer(size.value)
+                if _kernel32.QueryFullProcessImageNameW(handle, 0, buf2, ctypes.byref(size)):
+                    name = buf2.value.rsplit("\\", 1)[-1].lower()
+            finally:
+                _kernel32.CloseHandle(handle)
+    return (name, title)
+
+
 # ---- 开机自启：写 HKCU\...\Run（无需管理员权限）----
 _RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 _APP_NAME = "TranslatePopup"

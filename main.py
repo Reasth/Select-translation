@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import QApplication
 from config import CONFIG_DIR, Config
 from floating_icon import FloatingIcon
 from llm_client import LLMClient
-from platform_backend import is_autostart, set_autostart
+from platform_backend import foreground_app, is_autostart, set_autostart
 from selection_monitor import SelectionMonitor, grab_selected_text, is_foreground_terminal
 from settings_dialog import SettingsDialog
 from telemetry import Telemetry, ensure_install_id, new_session_id
@@ -179,11 +179,17 @@ class App:
         self.icon.show_near_cursor(lx, ly, lifetime_ms=self.cfg.show_icon_ms)
         drag_px = max(abs(release_x - press_x), abs(release_y - press_y))
         terminal_fg = is_foreground_terminal()
-        self.telemetry.fire("icon_shown", {"drag_px": drag_px, "terminal_fg": terminal_fg})
-        if terminal_fg:
-            logging.info("skip eager selection cache for terminal foreground window")
-        else:
-            QTimer.singleShot(80, self._cache_selected_text)
+        app_name, win_title = foreground_app()
+        # 窗口标题留 200 字以内,够分类/分析,够远离「整页 URL 截屏」级别隐私。
+        self.telemetry.fire("icon_shown", {
+            "drag_px": drag_px,
+            "terminal_fg": terminal_fg,
+            "app_name": app_name,
+            "window_title": win_title[:200],
+        })
+        # CC / 终端场景现在是主要使用场景,不再跳过预翻译;
+        # 终端里 grab_selected_text 会自动改用 Ctrl+Shift+C(SIGINT 安全)。
+        QTimer.singleShot(80, self._cache_selected_text)
 
     def _cache_selected_text(self):
         text = grab_selected_text(timeout_ms=300, restore_clipboard=True)

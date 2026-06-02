@@ -48,6 +48,20 @@ def is_foreground_terminal() -> bool:
     return _foreground_bundle_id() in _TERMINAL_BUNDLE_IDS
 
 
+def foreground_app() -> tuple[str, str]:
+    """返回当前前台 app 的 (localizedName 小写, bundleIdentifier)。
+
+    macOS 没有不需 Accessibility 权限的窗口标题 API,所以「标题」位置塞 bundle id,
+    它对应用类别同样有强分类力(com.apple.Terminal / com.googlecode.iterm2 等)。
+    """
+    app = NSWorkspace.sharedWorkspace().frontmostApplication()
+    if app is None:
+        return ("", "")
+    name = (app.localizedName() or "").lower()
+    bundle = app.bundleIdentifier() or ""
+    return (name, bundle)
+
+
 # ---- 开机自启：写 ~/Library/LaunchAgents 下的 LaunchAgent plist ----
 _AGENT_LABEL = "com.translatepopup.agent"
 _AGENT_PATH = os.path.expanduser(f"~/Library/LaunchAgents/{_AGENT_LABEL}.plist")
