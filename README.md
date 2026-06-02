@@ -121,7 +121,8 @@ translate/
 ├── translation_popup.py             # 翻译结果卡片
 ├── settings_dialog.py               # 设置对话框（分引擎显隐）
 ├── tray.py                          # 系统托盘 / 菜单栏
-├── api/v1/chat/completions.mjs      # Vercel Edge 代理函数（托管档后端）
+├── api/v1/chat/completions.mjs      # Vercel Edge 代理函数（托管档后端，附 METRIC 日志）
+├── analyze_metrics.py               # 拉 vercel logs 出每日量/eager 命中/P50P95 延迟/错误的小报
 ├── TranslatePopup.spec              # PyInstaller 瘦身打包配置
 ├── build_win.ps1                    # Windows 一键打包脚本
 ├── start_mac.command                # macOS 双击启动
@@ -160,3 +161,13 @@ python test_internals.py
 ```
 
 覆盖：think 标签过滤、流式去前导空白、语言方向判断、语言码映射、免费引擎解析、HTTP 错误格式化、引擎端点解析、**代理失败自动降级到免费引擎**、剪贴板恢复、圆点定位等。
+
+## 看埋点
+
+每次代理请求都会吐一条 `METRIC <json>` 到 Vercel 函数日志，含模型、输入/输出字节、duration、thinking 模式、source(eager/click)、客户端版本、status。无原文内容，只有元数据。
+
+```bash
+python analyze_metrics.py --since 1d
+```
+
+输出每日翻译量、eager 命中率、P50/P95 延迟、错误率、模型分布、客户端版本分布。`--since 1h/6h/1d/7d` 调时间窗，`--raw` 改成只打印解析出的 METRIC JSON。
