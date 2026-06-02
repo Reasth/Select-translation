@@ -121,8 +121,11 @@ translate/
 ├── translation_popup.py             # 翻译结果卡片
 ├── settings_dialog.py               # 设置对话框（分引擎显隐）
 ├── tray.py                          # 系统托盘 / 菜单栏
-├── api/v1/chat/completions.mjs      # Vercel Edge 代理函数（托管档后端，附 METRIC 日志）
-├── analyze_metrics.py               # 拉 vercel logs 出每日量/eager 命中/P50P95 延迟/错误的小报
+├── telemetry.py                     # 客户端埋点 fire-and-forget 发送器（install_id/session_id 管理）
+├── api/v1/chat/completions.mjs      # Vercel Edge 代理函数（托管档后端，附 metric 落 Supabase）
+├── api/event.mjs                    # 客户端事件端点（每次 popup/click/settings 改动写一行 events 表）
+├── api/_supabase.mjs                # Supabase events 表写入封装（两端共用）
+├── analyze_metrics.py               # 拉 Supabase events 表出每日量/eager 命中/P50P95 延迟/错误的小报
 ├── TranslatePopup.spec              # PyInstaller 瘦身打包配置
 ├── build_win.ps1                    # Windows 一键打包脚本
 ├── start_mac.command                # macOS 双击启动
@@ -164,10 +167,21 @@ python test_internals.py
 
 ## 看埋点
 
-每次代理请求都会吐一条 `METRIC <json>` 到 Vercel 函数日志，含模型、输入/输出字节、duration、thinking 模式、source(eager/click)、客户端版本、status。无原文内容，只有元数据。
+满足「每个交互一条 log + 持久化到数据库」约束。所有事件落 Supabase `events` 表（单表 + jsonb props）。
+
+**两类事件:**
+- `origin=proxy` · `event=metric` —— 代理端每次翻译请求一条,字段含 model/input_chars/output_bytes/duration_ms/thinking/source/status/error
+- `origin=client` —— 客户端 fire-and-forget POST `/api/event`,事件名包括 `app_start` / `app_quit` / `settings_opened` / `settings_saved` / `tray_enabled_changed` / `tray_autostart_changed` / `icon_shown` / `selection_cached` / `icon_clicked` / `icon_auto_hidden` / `eager_started` / `eager_adopted` / `eager_completed` / `eager_cancelled` / `popup_shown` / `popup_closed` / `translation_started` / `translation_failed`
+
+**Install/Session 关联:** 客户端首次启动生成匿名 `install_id`(持久,落 config.json),每次启动随机 `session_id`(内存)。代理 metric 和客户端事件用同一对 ID,可在 SQL 里 JOIN。
+
+**隐私:** 不记任何原文/译文,只记元数据(长度、duration、模型、版本、source)。客户端不直连 Supabase,所有写入经 Vercel 函数注入 ANON key。
+
+**看报表:**
 
 ```bash
+vercel env pull .env.local    # 首次:把 SUPABASE_URL + ANON_KEY 拉到本地
 python analyze_metrics.py --since 1d
 ```
 
-输出每日翻译量、eager 命中率、P50/P95 延迟、错误率、模型分布、客户端版本分布。`--since 1h/6h/1d/7d` 调时间窗，`--raw` 改成只打印解析出的 METRIC JSON。
+输出:每日事件数、独立 install/session、proxy 延迟 P50/P95、source/model/thinking 分布、eager 漏斗(started/adopted/completed/cancelled + 命中率)、客户端事件 Top 20、版本分布。`--since 30m/6h/1d/7d` 调窗,`--raw` 倒出原始 JSON。
