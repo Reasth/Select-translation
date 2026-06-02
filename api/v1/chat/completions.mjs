@@ -17,6 +17,8 @@
  * analyze_metrics.py 出每日量、eager 命中率、P50/P95 延迟、错误率。
  */
 
+import { writeEvent } from '../../_supabase.mjs';
+
 // 上游是 api.minimaxi.com（中国大陆），固定到 Tokyo edge 以缩短回程跳数。
 // Vercel 默认全球边缘自动调度，从美西 edge 回上游要绕大半圈，可省 100-200ms。
 export const config = { runtime: 'edge', regions: ['hnd1'] };
@@ -42,7 +44,7 @@ const UPSTREAM_TIMEOUT_MS = 22_000;
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client, X-Source',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client, X-Source, X-Install-Id, X-Session-Id',
 };
 
 function jsonError(status, message) {
@@ -52,19 +54,33 @@ function jsonError(status, message) {
   });
 }
 
-function emitMetric(fields) {
-  // Vercel Edge 把 console.log 写到 stdout；前缀 "METRIC " 让 analyze_metrics.py 一行 grep 即可过出来。
+function emitMetric(tags, extra) {
+  // 双写:console.log（短期排错）+ Supabase events 表（持久化,满足安哥「不是 stdout」要求）。
+  // 返回 Promise,让调用方可以 await——fire-and-forget 在 Edge runtime 会被 worker 回收吞掉。
+  const props = { source: tags.source, ...extra };
   try {
-    console.log('METRIC ' + JSON.stringify({ ts: new Date().toISOString(), ...fields }));
-  } catch {
-    // 序列化失败不能拖垮请求
-  }
+    console.log('METRIC ' + JSON.stringify({
+      ts: new Date().toISOString(),
+      client: tags.client,
+      ...props,
+    }));
+  } catch {}
+  return writeEvent({
+    origin: 'proxy',
+    install_id: tags.install_id || null,
+    session_id: tags.session_id || null,
+    client: tags.client,
+    event: 'metric',
+    props,
+  });
 }
 
 function readClientTags(req) {
   return {
     client: req.headers.get('x-client') || 'unknown',
     source: req.headers.get('x-source') || 'unknown',
+    install_id: req.headers.get('x-install-id') || null,
+    session_id: req.headers.get('x-session-id') || null,
   };
 }
 
@@ -76,13 +92,13 @@ export default async function handler(req) {
     return new Response(null, { status: 204, headers: CORS });
   }
   if (req.method !== 'POST') {
-    emitMetric({ ...tags, status: 405, error: 'method' });
+    await emitMetric(tags, { status: 405, error: 'method' });
     return jsonError(405, 'method not allowed');
   }
 
   const key = process.env.MINIMAX_API_KEY;
   if (!key) {
-    emitMetric({ ...tags, status: 500, error: 'no_key' });
+    await emitMetric(tags, { status: 500, error: 'no_key' });
     return jsonError(500, 'server is missing MINIMAX_API_KEY env var');
   }
 
@@ -90,16 +106,16 @@ export default async function handler(req) {
   try {
     body = await req.json();
   } catch {
-    emitMetric({ ...tags, status: 400, error: 'bad_json' });
+    await emitMetric(tags, { status: 400, error: 'bad_json' });
     return jsonError(400, 'invalid JSON body');
   }
 
   if (typeof body !== 'object' || body === null) {
-    emitMetric({ ...tags, status: 400, error: 'bad_body' });
+    await emitMetric(tags, { status: 400, error: 'bad_body' });
     return jsonError(400, 'body must be a JSON object');
   }
   if (typeof body.model !== 'string' || !ALLOWED_MODELS.has(body.model)) {
-    emitMetric({ ...tags, model: body.model, status: 400, error: 'model_blocked' });
+    await emitMetric(tags, { model: body.model, status: 400, error: 'model_blocked' });
     return jsonError(400, 'model not allowed; pick one of the MiniMax chat models');
   }
   if (typeof body.max_tokens === 'number' && body.max_tokens > MAX_TOKENS_CAP) {
@@ -107,13 +123,12 @@ export default async function handler(req) {
   }
   const inputChars = JSON.stringify(body.messages ?? []).length;
   if (inputChars > MAX_INPUT_CHARS) {
-    emitMetric({ ...tags, model: body.model, input_chars: inputChars, status: 413, error: 'input_too_long' });
+    await emitMetric(tags, { model: body.model, input_chars: inputChars, status: 413, error: 'input_too_long' });
     return jsonError(413, `input too long (${inputChars} > ${MAX_INPUT_CHARS} chars)`);
   }
 
   const thinkingMode = body.thinking?.type || 'default';
-  const baseFields = {
-    ...tags,
+  const baseExtra = {
     model: body.model,
     input_chars: inputChars,
     thinking: thinkingMode,
@@ -133,8 +148,8 @@ export default async function handler(req) {
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
   } catch (e) {
-    emitMetric({
-      ...baseFields,
+    await emitMetric(tags, {
+      ...baseExtra,
       status: 502,
       duration_ms: Date.now() - t0,
       error: 'upstream_' + (e?.name || 'fetch_failed'),
@@ -154,9 +169,11 @@ export default async function handler(req) {
       outputBytes += chunk.byteLength;
       controller.enqueue(chunk);
     },
-    flush() {
-      emitMetric({
-        ...baseFields,
+    async flush() {
+      // async flush 会让 transform readable 端在 await 完成前不关闭,
+      // Vercel Edge runtime 因此会保持函数活到 writeEvent 完成,metric 才不会丢。
+      await emitMetric(tags, {
+        ...baseExtra,
         status: upstream.status,
         duration_ms: Date.now() - t0,
         output_bytes: outputBytes,
