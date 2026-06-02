@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import sys
 import time
 
 import pyperclip
 from PyQt6.QtCore import QObject, pyqtSignal
 from pynput import mouse
-from pynput.keyboard import Controller
+from pynput.keyboard import Controller, Key
 
 from platform_backend import COPY_MODIFIER, is_foreground_terminal, is_non_text_cursor
 
@@ -91,10 +92,21 @@ def grab_selected_text(timeout_ms: int = 250, restore_clipboard: bool = False) -
         pass
 
     kb = Controller()
-    kb.press(COPY_MODIFIER)
-    kb.press("c")
-    kb.release("c")
-    kb.release(COPY_MODIFIER)
+    # Windows 终端里裸 Ctrl+C 等于 SIGINT,会杀掉前台进程(CC/git/npm 跑一半就被打断)。
+    # 现代终端约定 Ctrl+Shift+C 才是复制。macOS Cmd+C 在终端里就是复制,不冲突。
+    use_shift = sys.platform == "win32" and is_foreground_terminal()
+    if use_shift:
+        kb.press(Key.ctrl)
+        kb.press(Key.shift)
+        kb.press("c")
+        kb.release("c")
+        kb.release(Key.shift)
+        kb.release(Key.ctrl)
+    else:
+        kb.press(COPY_MODIFIER)
+        kb.press("c")
+        kb.release("c")
+        kb.release(COPY_MODIFIER)
 
     deadline = time.time() + timeout_ms / 1000.0
     captured = ""
