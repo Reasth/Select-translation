@@ -116,6 +116,48 @@ def test_resolve_endpoint_ai_requires_key():
     assert auth == "sk-xyz"
 
 
+def test_qthread_signal_to_qobject_bound_method_runs_on_main_thread():
+    """回归保护:1.3.0 把 eager worker 信号连到普通 lambda 导致 PyQt 用 DirectConnection,
+    槽跑在 worker 线程里碰 QWidget,Qt6Core.dll 0x1cf68 闪退(0xc0000409)。
+    修法是让 App 继承 QObject、信号连绑定方法。这个 test 就守住这个不变量:
+    QObject 子类的绑定方法槽必须在主线程被调用。"""
+    import os, threading
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PyQt6.QtCore import QCoreApplication, QObject, QThread, pyqtSignal, pyqtSlot
+    from PyQt6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    main_tid = threading.get_ident()
+
+    class StubWorker(QThread):
+        token_received = pyqtSignal(str)
+        def run(self):
+            self.token_received.emit("hello")
+
+    class Receiver(QObject):
+        def __init__(self):
+            super().__init__()
+            self.observed_tids: list[int] = []
+
+        @pyqtSlot(str)
+        def on_token(self, _tok: str):
+            self.observed_tids.append(threading.get_ident())
+
+    recv = Receiver()
+    worker = StubWorker()
+    worker.token_received.connect(recv.on_token)
+    worker.start()
+    worker.wait(2000)
+    # 让事件循环消化排队的 QueuedConnection 调用
+    for _ in range(20):
+        QCoreApplication.processEvents()
+
+    assert recv.observed_tids == [main_tid], (
+        f"signal landed on wrong thread(s) {recv.observed_tids}, main={main_tid}; "
+        "this is the 0xc0000409 crash pattern"
+    )
+
+
 def test_hosted_falls_back_to_free_when_proxy_fails():
     """代理挂了时,翻译应自动降级到免费引擎,保证「打开就能用」。"""
     import http_util
@@ -219,6 +261,7 @@ def main():
         test_resolve_endpoint_picks_hosted_constants,
         test_resolve_endpoint_ai_requires_key,
         test_hosted_falls_back_to_free_when_proxy_fails,
+        test_qthread_signal_to_qobject_bound_method_runs_on_main_thread,
         test_normalize_base_url_accepts_full_chat_endpoint,
         test_grab_restores_clipboard_when_no_selection,
         test_floating_icon_construct_and_position,

@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import logging
 import sys
+import threading
 import time
 import traceback
 
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QObject, QTimer, pyqtSlot
 from PyQt6.QtGui import QCursor, QGuiApplication
 from PyQt6.QtWidgets import QApplication
 
@@ -42,8 +43,16 @@ def _install_logging() -> None:
     sys.excepthook = _excepthook
 
 
-class App:
+class App(QObject):
+    """主控对象。**必须**是 QObject —— eager TranslateWorker 的 token_received 信号
+    要连到这个类的方法上,PyQt6 才会用 QueuedConnection 把 token 跳回主线程。
+    1.3 早期版本曾把信号连到普通 lambda,PyQt 默认 DirectConnection,槽跑在 worker
+    线程里碰 self.popup(QWidget),Qt 跨线程 assert,在 Qt6Core.dll 0x1cf68 闪退
+    (异常码 0xc0000409,即 STACK_BUFFER_OVERRUN/fast-fail)。
+    """
+
     def __init__(self):
+        super().__init__()
         self.cfg = Config.load()
         # 匿名 install_id 在首次启动生成并落库;session_id 每次启动随机不持久。
         install_id = ensure_install_id(self.cfg)
@@ -213,9 +222,10 @@ class App:
         self._eager_done = False
         self._eager_started_at = time.monotonic()
         worker = TranslateWorker(self.client, text, source="eager")
-        owner_text = text  # 闭包捕获,过滤陈旧 worker 的信号
-        worker.token_received.connect(lambda tok: self._on_eager_token(owner_text, tok))
-        worker.finished_translation.connect(lambda: self._on_eager_finished(owner_text))
+        # **绑定方法**(不是 lambda):PyQt6 检测到接收方是 QObject(App)→ 自动
+        # QueuedConnection → 槽在主线程跑。陈旧 worker 的信号用 self.sender() 过滤。
+        worker.token_received.connect(self._eager_token_slot)
+        worker.finished_translation.connect(self._eager_finished_slot)
         self._eager_worker = worker
         worker.start()
         logging.info("eager started len=%s", len(text))
@@ -242,24 +252,37 @@ class App:
         self._eager_buffer = ""
         self._eager_done = False
 
-    def _on_eager_token(self, owner_text: str, token: str) -> None:
-        if owner_text != self._eager_text:
-            return  # 陈旧 worker 的尾巴信号,丢弃
+    @pyqtSlot(str)
+    def _eager_token_slot(self, token: str) -> None:
+        # 主线程 guard:若哪天 PyQt 默认连接策略变了,宁可丢 token 也不让 Qt 跨线程崩。
+        if threading.current_thread() is not threading.main_thread():
+            logging.error("eager token slot fired off main thread (tid=%s); dropping",
+                          threading.get_ident())
+            return
+        # sender() 是 PyQt6 提供的"触发当前槽的发送方 QObject":陈旧 worker(已被 _cancel_eager
+        # deleteLater 的)若有尾巴信号还在事件队列里,sender() ≠ 当前 self._eager_worker,直接丢。
+        if self.sender() is not self._eager_worker:
+            return
         self._eager_buffer += token
-        if self._popup_consuming_text == owner_text and self.popup.isVisible():
+        if self._popup_consuming_text == self._eager_text and self.popup.isVisible():
             self.popup.append_eager_token(token)
 
-    def _on_eager_finished(self, owner_text: str) -> None:
-        if owner_text != self._eager_text:
+    @pyqtSlot()
+    def _eager_finished_slot(self) -> None:
+        if threading.current_thread() is not threading.main_thread():
+            logging.error("eager finished slot fired off main thread (tid=%s); dropping",
+                          threading.get_ident())
+            return
+        if self.sender() is not self._eager_worker:
             return
         self._eager_done = True
-        if self._popup_consuming_text == owner_text and self.popup.isVisible():
+        if self._popup_consuming_text == self._eager_text and self.popup.isVisible():
             self.popup.mark_eager_done()
         dt_ms = int((time.monotonic() - getattr(self, "_eager_started_at", time.monotonic())) * 1000)
         self.telemetry.fire("eager_completed", {
             "chars": len(self._eager_buffer),
             "duration_ms": dt_ms,
-            "adopted": self._popup_consuming_text == owner_text,
+            "adopted": self._popup_consuming_text == self._eager_text,
         })
 
     def _on_popup_closed(self) -> None:
