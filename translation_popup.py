@@ -21,13 +21,14 @@ class TranslateWorker(QThread):
     token_received = pyqtSignal(str)
     finished_translation = pyqtSignal()
 
-    def __init__(self, client: LLMClient, text: str):
+    def __init__(self, client: LLMClient, text: str, source: str = "click"):
         super().__init__()
         self.client = client
         self.text = text
+        self.source = source  # 走到代理端会变成 X-Source header,用于区分 eager/click
 
     def run(self):
-        for token in self.client.stream_translate(self.text):
+        for token in self.client.stream_translate(self.text, source=self.source):
             if self.isInterruptionRequested():
                 break
             self.token_received.emit(token)

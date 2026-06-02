@@ -24,6 +24,9 @@ def normalize_base_url(value: str) -> str:
     return url
 
 
+# 客户端版本号，随发版变。通过 X-Client header 上报给代理日志，用于按版本聚合指标。
+CLIENT_VERSION = "1.1.0"
+
 # 托管代理是定值，不放进 Config（避免被本地配置改写指向别处）。
 HOSTED_PROXY_BASE_URL = "https://translate-omega-livid.vercel.app/api/v1"
 # M3 是 MiniMax 唯一真正尊重 thinking=disabled 的旗舰模型（实测 0 think token）。

@@ -8,6 +8,7 @@ from typing import Iterator, Optional
 import engines
 import http_util
 from config import (
+    CLIENT_VERSION,
     HOSTED_DEFAULT_MODEL,
     HOSTED_PROXY_BASE_URL,
     Config,
@@ -180,9 +181,12 @@ class LLMClient:
         model: str,
         auth_token: Optional[str],
         extra_payload: Optional[dict] = None,
+        extra_headers: Optional[dict] = None,
     ) -> Iterator[str]:
         """通用 OpenAI 兼容流式调用。网络/HTTP 错误向上抛 HttpStreamError。"""
         headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+        if extra_headers:
+            headers.update(extra_headers)
         payload = _build_chat_payload(self.cfg, text, model=model, stream=True, extra=extra_payload)
         for raw in http_util.stream_post_lines(
             base_url + "/chat/completions",
@@ -222,9 +226,10 @@ class LLMClient:
         except http_util.HttpStreamError as e:
             yield f"[{e.message}]"
 
-    def _hosted_stream(self, text: str) -> Iterator[str]:
+    def _hosted_stream(self, text: str, *, source: str = "click") -> Iterator[str]:
         """托管档：用作者代付的代理；失败时静默降级到免费引擎，保证「打开就能翻译」。
-        thinking=disabled 在 M3 上是真禁推理（实测 0 think token，TTFT 直接降到 ~3s）。"""
+        thinking=disabled 在 M3 上是真禁推理（实测 0 think token，TTFT 直接降到 ~3s）。
+        source 决定 X-Source header（eager|click），用于代理端日志区分预翻译命中率。"""
         try:
             yield from self._stream_openai_compat(
                 text,
@@ -232,15 +237,19 @@ class LLMClient:
                 model=HOSTED_DEFAULT_MODEL,
                 auth_token=None,
                 extra_payload={"thinking": {"type": "disabled"}},
+                extra_headers={
+                    "X-Client": f"translate-popup/{CLIENT_VERSION}",
+                    "X-Source": source,
+                },
             )
         except http_util.HttpStreamError as e:
             logging.warning("hosted engine failed (%s), falling back to free", e.message)
             yield from engines.stream_free_translate(text, self.cfg.target_lang)
 
-    def stream_translate(self, text: str) -> Iterator[str]:
+    def stream_translate(self, text: str, *, source: str = "click") -> Iterator[str]:
         engine = self.cfg.engine
         if engine == "free":
             yield from engines.stream_free_translate(text, self.cfg.target_lang)
             return
-        source = self._hosted_stream(text) if engine == "hosted" else self._ai_stream(text)
-        yield from _strip_leading_whitespace(_filter_think(source))
+        raw = self._hosted_stream(text, source=source) if engine == "hosted" else self._ai_stream(text)
+        yield from _strip_leading_whitespace(_filter_think(raw))

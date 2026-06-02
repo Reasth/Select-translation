@@ -156,7 +156,7 @@ class App:
         self._eager_text = text
         self._eager_buffer = ""
         self._eager_done = False
-        worker = TranslateWorker(self.client, text)
+        worker = TranslateWorker(self.client, text, source="eager")
         owner_text = text  # 闭包捕获,过滤陈旧 worker 的信号
         worker.token_received.connect(lambda tok: self._on_eager_token(owner_text, tok))
         worker.finished_translation.connect(lambda: self._on_eager_finished(owner_text))
