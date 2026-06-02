@@ -172,6 +172,10 @@ def _strip_leading_whitespace(raw_stream: Iterator[str]) -> Iterator[str]:
 class LLMClient:
     def __init__(self, cfg: Config):
         self.cfg = cfg
+        # App 在 Telemetry 就绪后塞进来,让 hosted 请求带上 X-Install-Id / X-Session-Id,
+        # 这样代理端 metric 行能和客户端事件用同一 install_id 关联。
+        self.install_id: str = ""
+        self.session_id: str = ""
 
     def _stream_openai_compat(
         self,
@@ -230,6 +234,14 @@ class LLMClient:
         """托管档：用作者代付的代理；失败时静默降级到免费引擎，保证「打开就能翻译」。
         thinking=disabled 在 M3 上是真禁推理（实测 0 think token，TTFT 直接降到 ~3s）。
         source 决定 X-Source header（eager|click），用于代理端日志区分预翻译命中率。"""
+        headers = {
+            "X-Client": f"translate-popup/{CLIENT_VERSION}",
+            "X-Source": source,
+        }
+        if self.install_id:
+            headers["X-Install-Id"] = self.install_id
+        if self.session_id:
+            headers["X-Session-Id"] = self.session_id
         try:
             yield from self._stream_openai_compat(
                 text,
@@ -237,10 +249,7 @@ class LLMClient:
                 model=HOSTED_DEFAULT_MODEL,
                 auth_token=None,
                 extra_payload={"thinking": {"type": "disabled"}},
-                extra_headers={
-                    "X-Client": f"translate-popup/{CLIENT_VERSION}",
-                    "X-Source": source,
-                },
+                extra_headers=headers,
             )
         except http_util.HttpStreamError as e:
             logging.warning("hosted engine failed (%s), falling back to free", e.message)

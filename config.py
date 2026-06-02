@@ -25,7 +25,7 @@ def normalize_base_url(value: str) -> str:
 
 
 # 客户端版本号，随发版变。通过 X-Client header 上报给代理日志，用于按版本聚合指标。
-CLIENT_VERSION = "1.1.0"
+CLIENT_VERSION = "1.2.0"
 
 # 托管代理是定值，不放进 Config（避免被本地配置改写指向别处）。
 HOSTED_PROXY_BASE_URL = "https://translate-omega-livid.vercel.app/api/v1"
@@ -48,6 +48,7 @@ class Config:
     source_lang: str = "auto"
     enabled: bool = True
     autostart: bool = False
+    install_id: str = ""  # 首次启动自动生成的匿名持久 UUID,用于埋点关联同一安装的事件
     show_icon_ms: int = 2000  # 乔布斯式：看清→识别→决策→移动到圆点 ≈ 2s
     min_chars: int = 1
     max_chars: int = 3000
