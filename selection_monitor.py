@@ -4,13 +4,14 @@ import sys
 import time
 
 import pyperclip
-from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QObject, QThread, pyqtSignal
 from pynput import mouse
 from pynput.keyboard import Controller, Key
 
 from platform_backend import COPY_MODIFIER, is_foreground_terminal, is_non_text_cursor
 
 __all__ = [
+    "SelectionGrabber",
     "SelectionMonitor",
     "grab_selected_text",
     "is_foreground_terminal",
@@ -75,11 +76,19 @@ class SelectionMonitor(QObject):
         self.selection_finished.emit(px, py, x, y)
 
 
-def grab_selected_text(timeout_ms: int = 250, restore_clipboard: bool = False) -> str:
+def grab_selected_text(
+    timeout_ms: int = 250,
+    restore_clipboard: bool = False,
+    *,
+    use_shift: bool | None = None,
+) -> str:
     """模拟复制快捷键获取当前选中文本（Windows: Ctrl+C, macOS: Cmd+C）。
 
     设计原则：只在用户主动点击翻译图标时调用，避免在选中瞬间打断用户的复制操作。
     成功时让选中文本留在剪贴板里（与用户主动复制的结果一致）；失败时恢复原内容。
+
+    use_shift 显式传入时跳过 is_foreground_terminal 探测——主线程已先取好的值传进来,
+    后台 grabber 就不必再次 GetForegroundWindow（也更确定地反映「释放鼠标」那一刻的前台窗口）。
     """
     try:
         original = pyperclip.paste()
@@ -94,7 +103,8 @@ def grab_selected_text(timeout_ms: int = 250, restore_clipboard: bool = False) -
     kb = Controller()
     # Windows 终端里裸 Ctrl+C 等于 SIGINT,会杀掉前台进程(CC/git/npm 跑一半就被打断)。
     # 现代终端约定 Ctrl+Shift+C 才是复制。macOS Cmd+C 在终端里就是复制,不冲突。
-    use_shift = sys.platform == "win32" and is_foreground_terminal()
+    if use_shift is None:
+        use_shift = sys.platform == "win32" and is_foreground_terminal()
     if use_shift:
         kb.press(Key.ctrl)
         kb.press(Key.shift)
@@ -108,10 +118,12 @@ def grab_selected_text(timeout_ms: int = 250, restore_clipboard: bool = False) -
         kb.release("c")
         kb.release(COPY_MODIFIER)
 
+    # 5ms 轮询(老版本 20ms):剪贴板典型 20-60ms 到位,5ms 间隔能在 1-2 个 tick 内就返回,
+    # 实际 grab 总耗时从 ~300ms 上限压到 ~30-80ms,圆点出现的"卡顿感"消失。
     deadline = time.time() + timeout_ms / 1000.0
     captured = ""
     while time.time() < deadline:
-        time.sleep(0.02)
+        time.sleep(0.005)
         try:
             current = pyperclip.paste()
         except Exception:
@@ -127,3 +139,40 @@ def grab_selected_text(timeout_ms: int = 250, restore_clipboard: bool = False) -
             pass
 
     return captured.strip()
+
+
+class SelectionGrabber(QThread):
+    """后台抓取选中文本。主线程不再被剪贴板轮询阻塞——圆点立刻可见、可点。
+
+    用法:连 captured(str) 槽,start();线程 run() 结束后通过 finished->deleteLater 自毁。
+    captured emit 之后,主线程仍可同步读 self.text(线程已死/尚未 deleteLater 都安全)。
+    """
+
+    captured = pyqtSignal(str)
+
+    def __init__(
+        self,
+        *,
+        use_shift: bool,
+        timeout_ms: int = 300,
+        restore: bool = True,
+    ) -> None:
+        super().__init__()
+        self._use_shift = use_shift
+        self._timeout_ms = timeout_ms
+        self._restore = restore
+        self.text: str = ""
+        # QThread 生命周期:run 返回后让 Qt 在事件循环里 deleteLater,
+        # 严禁外面手动 delete 一个还在 isRunning 的 QThread(0xc0000409 fast-fail)。
+        self.finished.connect(self.deleteLater)
+
+    def run(self) -> None:
+        try:
+            self.text = grab_selected_text(
+                timeout_ms=self._timeout_ms,
+                restore_clipboard=self._restore,
+                use_shift=self._use_shift,
+            )
+        except Exception:
+            self.text = ""
+        self.captured.emit(self.text)

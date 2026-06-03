@@ -26,6 +26,9 @@ class TranslateWorker(QThread):
         self.client = client
         self.text = text
         self.source = source  # 走到代理端会变成 X-Source header,用于区分 eager/click
+        # QThread 必须在 run() 真正返回后再析构,否则 Qt 喊 qFatal → fast-fail
+        # 0xc0000409 P9=7。让线程自己接 finished→deleteLater,外部一律不再直接 delete。
+        self.finished.connect(self.deleteLater)
 
     def run(self):
         for token in self.client.stream_translate(self.text, source=self.source):
@@ -176,12 +179,14 @@ class TranslationPopup(QWidget):
         self._resize_to_text()
 
     def cancel_translation(self) -> None:
-        if self._worker is not None and self._worker.isRunning():
-            self._worker.requestInterruption()
-            self._worker.quit()
-            self._worker.wait(50)
+        # 不调 deleteLater:worker.finished 已自接 deleteLater,run() 真正退出后自毁。
+        # 直接 delete 还在跑的 QThread 会触发 fast-fail 0xc0000409。
         if self._worker is not None:
-            self._worker.deleteLater()
+            try:
+                if self._worker.isRunning():
+                    self._worker.requestInterruption()
+            except RuntimeError:
+                pass
             self._worker = None
         self.loading.stop()
 
@@ -189,6 +194,15 @@ class TranslationPopup(QWidget):
         self._position_near(anchor)
         self.show()
         self.raise_()
+
+    def show_loading_state(self) -> None:
+        """只把 popup 摆到 loading 形态,不起 worker——用于「点击 → 先盖住 → 后台抓 → 翻译」
+        这条流程的第一步,让用户在 Ctrl+Shift+C 真发出去之前先看到 popup,选区被宿主
+        清掉的瞬间被 popup 弹出遮蔽。"""
+        self.cancel_translation()
+        self._buffer = ""
+        self.result_label.setText("")
+        self._show_loading()
 
     def present_eager(self, buffer: str) -> None:
         """以一段 eager 已收的 buffer 起头展示;后续 token 由上层 append_eager_token 推。"""
@@ -258,8 +272,8 @@ class TranslationPopup(QWidget):
         self.setFixedSize(card_w + self.SHADOW_PAD * 2, card_h + self.SHADOW_PAD * 2)
 
     def _on_worker_finished(self):
+        # worker 自己接了 finished→deleteLater,这里只清引用。
         if self._worker is not None:
-            self._worker.deleteLater()
             self._worker = None
         if not self._buffer:
             self.loading.stop()

@@ -6,7 +6,7 @@ import threading
 import time
 import traceback
 
-from PyQt6.QtCore import QObject, QTimer, pyqtSlot
+from PyQt6.QtCore import QObject, QPoint, QTimer, pyqtSlot
 from PyQt6.QtGui import QCursor, QGuiApplication
 from PyQt6.QtWidgets import QApplication
 
@@ -14,7 +14,12 @@ from config import CONFIG_DIR, Config
 from floating_icon import FloatingIcon
 from llm_client import LLMClient
 from platform_backend import foreground_app, is_autostart, set_autostart
-from selection_monitor import SelectionMonitor, grab_selected_text, is_foreground_terminal
+from selection_monitor import (
+    SelectionGrabber,
+    SelectionMonitor,
+    grab_selected_text,
+    is_foreground_terminal,
+)
 from settings_dialog import SettingsDialog
 from telemetry import Telemetry, ensure_install_id, new_session_id
 from translation_popup import TranslateWorker, TranslationPopup
@@ -71,6 +76,13 @@ class App(QObject):
         self.tray = TrayController(enabled=self.cfg.enabled, autostart=is_autostart())
         self._suppress_next_close: bool = False
         self._cached_selection_text: str = ""
+        # 抓取选中文本的后台线程。从主线程下放出去 = 圆点立刻可见、Ctrl+C
+        # 不卡 Qt 事件循环。点击图标时若 grab 还在跑,主线程 wait 它一下即可。
+        self._grabber: SelectionGrabber | None = None
+        # 终端场景"点击时才抓"路径上的 grabber:popup 已经先显示了 loading,
+        # 这个 grabber 在后台把 Ctrl+Shift+C 发出去,选区清除被 popup 遮蔽。
+        self._click_grabber: SelectionGrabber | None = None
+        self._click_anchor: QPoint | None = None
 
         # ---- Eager 翻译状态 ----
         # 选中文本一就绪就预发请求,用户移鼠标→点圆点的几百毫秒里 API 已经在跑。
@@ -185,6 +197,7 @@ class App(QObject):
         lx = int(right_x / ratio)
         ly = int(top_y / ratio)
         self._cached_selection_text = ""
+        # 主线程立刻 show:Qt 事件循环不再被剪贴板轮询卡 300ms,圆点画面没有黑窗。
         self.icon.show_near_cursor(lx, ly, lifetime_ms=self.cfg.show_icon_ms)
         drag_px = max(abs(release_x - press_x), abs(release_y - press_y))
         terminal_fg = is_foreground_terminal()
@@ -196,17 +209,39 @@ class App(QObject):
             "app_name": app_name,
             "window_title": win_title[:200],
         })
-        # CC / 终端场景现在是主要使用场景,不再跳过预翻译;
-        # 终端里 grab_selected_text 会自动改用 Ctrl+Shift+C(SIGINT 安全)。
-        QTimer.singleShot(80, self._cache_selected_text)
+        # 终端宿主(conhost / Windows Terminal / PowerShell / cmd)收 Ctrl+Shift+C 后
+        # **会清掉自己的选区**——这是宿主侧 copy 的默认设计,键盘合成绕不过去。
+        # eager 在终端里 = 帮用户在划完词那一瞬间取消选中,破坏「划词流畅度」红线。
+        # 改为:终端场景 NOT 起 eager,延迟到点击图标时再抓——选区的清除被 popup
+        # 弹出遮蔽,用户感知不到。代价:终端场景损失 ~200ms-1s 的 eager 提前量。
+        # 非终端场景 Ctrl+C 不动选区,继续走 eager 高速路。
+        # 后续可用 UIA TextPattern 把终端的 eager 也补回来(零键盘合成、零选区扰动)。
+        if not terminal_fg:
+            # 30ms 等源应用完成选区 commit,然后到后台线程里发 Ctrl+C + 轮询。
+            # 80→30 + 5ms 间隔 polling + 后台执行 = 划词到 eager 起 HTTP 的 e2e 从 ~380ms 压到 ~60ms。
+            QTimer.singleShot(30, self._kick_grab)
 
-    def _cache_selected_text(self):
-        text = grab_selected_text(timeout_ms=300, restore_clipboard=True)
-        if text:
-            self._cached_selection_text = text
-            logging.info("cached selected text len=%s", len(text))
-            self.telemetry.fire("selection_cached", {"len": len(text)})
-            self._start_eager(text)
+    def _kick_grab(self) -> None:
+        # 旧 grabber 还在跑就丢引用,让它自然结束(captured 信号被 sender() != self._grabber 过滤掉)。
+        # 不强杀:杀一个还在 isRunning 的 QThread = 0xc0000409。
+        use_shift = is_foreground_terminal() if sys.platform == "win32" else False
+        g = SelectionGrabber(use_shift=use_shift, timeout_ms=300, restore=True)
+        g.captured.connect(self._on_grab_captured)
+        self._grabber = g
+        g.start()
+
+    @pyqtSlot(str)
+    def _on_grab_captured(self, text: str) -> None:
+        # sender() 过滤陈旧 grabber:用户连选两次时旧的尾巴信号到达也会被丢掉。
+        if self.sender() is not self._grabber:
+            return
+        self._grabber = None
+        if not text:
+            return
+        self._cached_selection_text = text
+        logging.info("cached selected text len=%s", len(text))
+        self.telemetry.fire("selection_cached", {"len": len(text)})
+        self._start_eager(text)
 
     # ---- Eager 翻译实现 ----
 
@@ -237,11 +272,12 @@ class App(QObject):
             try:
                 was_running = self._eager_worker.isRunning()
                 if was_running:
+                    # 只打中断标记。run() 在下一个 token 间隙退出,worker.finished 已
+                    # 自接 deleteLater 会负责析构。这里再调 deleteLater + 线程未退
+                    # = Qt fast-fail 0xc0000409 P9=7,正是上一版崩溃的真正成因。
                     self._eager_worker.requestInterruption()
-                    self._eager_worker.quit()
             except RuntimeError:
                 pass
-            self._eager_worker.deleteLater()
             self._eager_worker = None
         if was_running:
             self.telemetry.fire("eager_cancelled", {
@@ -301,11 +337,61 @@ class App(QObject):
     def _on_icon_clicked(self):
         self._suppress_next_close = True
         bubble_anchor = self.icon.dot_center_global()
-        text = self._cached_selection_text or grab_selected_text()
-        logging.info("icon clicked, selected text len=%s cached=%s", len(text), bool(self._cached_selection_text))
+        text = self._cached_selection_text
+        from_cache = bool(text)
+        from_inflight = False
+        if not text and self._grabber is not None:
+            # eager grab 还在跑(非终端场景用户点得很快):同步 wait 取它的 .text,
+            # 比再发一次 Ctrl+C 撞剪贴板靠谱。wait 返回时线程已死,deleteLater 尚未轮到。
+            try:
+                if self._grabber.isRunning():
+                    self._grabber.wait(250)
+                text = self._grabber.text or ""
+                from_inflight = bool(text)
+            except RuntimeError:
+                text = ""
+        if text:
+            self._dispatch_translation(
+                text, bubble_anchor,
+                from_cache=from_cache, from_inflight=from_inflight,
+            )
+            return
+        # 终端场景到这里:eager 没起,cache 没值。直接 popup loading + reveal,
+        # 让用户先看到「正在翻译」的视觉反馈,再后台发 Ctrl+Shift+C。
+        # 选区被宿主清掉的瞬间被 popup 的弹出动画遮蔽——感知层面"没丢"。
+        self._popup_consuming_text = ""
+        self.popup.show_loading_state()
+        self.popup.reveal_at(anchor=bubble_anchor)
+        self._click_anchor = bubble_anchor
+        # 50ms 后再 kick grab:让 popup 的 show() 在 Windows 这边完成 paint。
+        # 否则后台线程可能跑得太快,在 popup 还没真正可见时就发出 Ctrl+Shift+C,
+        # 用户依然能瞥到「选区先没,popup 后到」的 50ms 缝隙。
+        QTimer.singleShot(50, self._start_click_grabber)
+        logging.info("icon clicked, deferred grab scheduled (terminal path)")
+        self.telemetry.fire("icon_clicked", {
+            "text_len": 0,
+            "from_cache": False,
+            "from_inflight": False,
+            "deferred": True,
+        })
+
+    def _dispatch_translation(
+        self,
+        text: str,
+        bubble_anchor: QPoint,
+        *,
+        from_cache: bool,
+        from_inflight: bool,
+    ) -> None:
+        logging.info(
+            "icon clicked, selected text len=%s cached=%s inflight=%s",
+            len(text), from_cache, from_inflight,
+        )
         self.telemetry.fire("icon_clicked", {
             "text_len": len(text),
-            "from_cache": bool(self._cached_selection_text),
+            "from_cache": from_cache,
+            "from_inflight": from_inflight,
+            "deferred": False,
         })
         if len(text) < self.cfg.min_chars or len(text) > self.cfg.max_chars:
             self.popup.show_message("未获取到选中文本，请重新划词后再点圆点。")
@@ -338,6 +424,40 @@ class App(QObject):
         self.telemetry.fire("popup_shown", {
             "engine": self.cfg.engine,
             "adopted_eager": text == self._eager_text and self._eager_worker is not None,
+        })
+
+    def _start_click_grabber(self) -> None:
+        use_shift = is_foreground_terminal() if sys.platform == "win32" else False
+        # restore=False:click 时让选区文本留在剪贴板里(与用户主动 Ctrl+C 的语义一致)。
+        g = SelectionGrabber(use_shift=use_shift, timeout_ms=300, restore=False)
+        g.captured.connect(self._on_click_grab_captured)
+        self._click_grabber = g
+        g.start()
+
+    @pyqtSlot(str)
+    def _on_click_grab_captured(self, text: str) -> None:
+        # sender() 过滤陈旧 click_grabber(用户在 popup 出来后又点了别的)。
+        if self.sender() is not self._click_grabber:
+            return
+        self._click_grabber = None
+        anchor = self._click_anchor or QCursor.pos()
+        self._click_anchor = None
+        if not text or len(text) < self.cfg.min_chars or len(text) > self.cfg.max_chars:
+            self.popup.show_message("未获取到选中文本，请重新划词后再点圆点。")
+            self.telemetry.fire("translation_failed", {
+                "reason": "no_text", "len": len(text), "deferred": True,
+            })
+            return
+        # popup 已经是 loading 形态,直接 start_translation 接过去(cancel_translation 是 no-op,
+        # 不会闪掉 loading 视觉)。
+        self._popup_consuming_text = ""
+        self.popup.start_translation(text)
+        logging.info("deferred grab captured, len=%s", len(text))
+        self.telemetry.fire("translation_started", {
+            "text_len": len(text),
+            "eager_existed": False,
+            "eager_text_mismatch": False,
+            "deferred": True,
         })
 
 

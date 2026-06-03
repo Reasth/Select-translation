@@ -228,6 +228,45 @@ def test_grab_restores_clipboard_when_no_selection():
     print(f"  grab returned: {result!r}, clipboard after: {after!r}")
 
 
+def test_selection_grabber_runs_off_main_thread():
+    """回归保护:grab_selected_text 一旦回到 Qt 主线程,圆点就会出现 ~300ms 黑窗,
+    破坏「丝滑划词」红线。SelectionGrabber 必须在自己的 QThread 里跑剪贴板轮询。
+    用 mock 替换底层抓取,验证 worker 函数确实在非主线程被调用。"""
+    import os, threading
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PyQt6.QtCore import QCoreApplication
+    from PyQt6.QtWidgets import QApplication
+    import selection_monitor
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    main_tid = threading.get_ident()
+    observed_tid: list[int] = []
+
+    original = selection_monitor.grab_selected_text
+
+    def spy(*args, **kwargs):
+        observed_tid.append(threading.get_ident())
+        return "captured"
+
+    selection_monitor.grab_selected_text = spy
+    try:
+        captured_text: list[str] = []
+        g = selection_monitor.SelectionGrabber(use_shift=False, timeout_ms=50, restore=True)
+        g.captured.connect(captured_text.append)
+        g.start()
+        g.wait(2000)
+        for _ in range(20):
+            QCoreApplication.processEvents()
+    finally:
+        selection_monitor.grab_selected_text = original
+
+    assert observed_tid and observed_tid[0] != main_tid, (
+        f"grab ran on main thread tid={main_tid} (observed={observed_tid}); "
+        "this re-introduces the 划词卡顿 regression"
+    )
+    assert captured_text == ["captured"], f"captured signal not delivered: {captured_text!r}"
+
+
 def test_floating_icon_construct_and_position():
     """构造圆点窗口、调用 show_near_cursor 不应崩溃，位置计算正确。"""
     import os
@@ -264,6 +303,7 @@ def main():
         test_qthread_signal_to_qobject_bound_method_runs_on_main_thread,
         test_normalize_base_url_accepts_full_chat_endpoint,
         test_grab_restores_clipboard_when_no_selection,
+        test_selection_grabber_runs_off_main_thread,
         test_floating_icon_construct_and_position,
     ]
     failed = 0
