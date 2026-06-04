@@ -122,7 +122,7 @@ class App(QObject):
 
         if not self.cfg.api_key:
             self.tray.notify(
-                "翻译助手已启动",
+                "Select 已启动",
                 "首次使用请右键托盘图标 → 设置，填写 API Key。",
             )
 

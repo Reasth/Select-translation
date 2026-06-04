@@ -32,7 +32,7 @@ class TrayController(QObject):
     def __init__(self, enabled: bool, autostart: bool = False):
         super().__init__()
         self.icon = QSystemTrayIcon(make_icon(), self)
-        self.icon.setToolTip("翻译助手 - 选中文本即可翻译")
+        self.icon.setToolTip("Select — 选中即懂")
 
         self.menu = QMenu()
         self.enable_action = QAction("启用", self.menu, checkable=True)

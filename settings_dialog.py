@@ -56,7 +56,7 @@ class SettingsDialog(QDialog):
     def __init__(self, cfg: Config, parent=None):
         super().__init__(parent)
         self.cfg = cfg
-        self.setWindowTitle("翻译助手 - 设置")
+        self.setWindowTitle("Select — 设置")
         self.setMinimumWidth(420)
 
         layout = QVBoxLayout(self)

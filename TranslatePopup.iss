@@ -1,12 +1,12 @@
-; Inno Setup 安装器配置 —— 一键安装版「翻译助手」。
+; Inno Setup 安装器配置 —— 一键安装版「Select」。
 ;
 ; 构建：装好 Inno Setup 后运行  iscc TranslatePopup.iss
 ; 产物：installer\TranslatePopup-Setup.exe（用户双击 → 选目录 → 装好 → 立刻能用）。
 ; 安装内容只有一个 ~26MB 的 onefile exe，自动加 Start 菜单项与卸载入口；
 ; 「开机自启」是可选项，默认不勾，符合"用户最小同意"原则。
 
-#define MyAppName "翻译助手"
-#define MyAppNameEng "Translate Popup"
+#define MyAppName "Select"
+#define MyAppNameEng "Select"
 #define MyAppVersion "1.3.1"
 #define MyAppPublisher "translate-popup"
 #define MyAppExeName "TranslatePopup.exe"
@@ -48,7 +48,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "autostart"; Description: "{cm:AutoStartDesc}"; GroupDescription: "{cm:StartupOptions}"; Flags: unchecked
 
 [CustomMessages]
-AutoStartDesc=开机自动启动「翻译助手」
+AutoStartDesc=开机自动启动「Select」
 StartupOptions=启动选项：
 
 [Files]
