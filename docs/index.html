@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Select — Translate anywhere, just by selecting</title>
-<meta name="description" content="A lightweight, zero-config inline-translation desktop tool (Windows / macOS): select text and a blue 译 dot floats up by your cursor — click for an instant AI translation powered by MiniMax M2.7-highspeed (no API key needed). Optionally plug in your own DeepSeek / Qwen / Zhipu / Kimi / OpenAI / Ollama key for full control.">
+<title>Select — 选中即懂 · Understand anything, just by selecting</title>
+<meta name="description" content="A lightweight, zero-config desktop tool (Windows / macOS) to understand anything you select — translate a foreign sentence, define a term, explain code, or diagnose an error. Select text and a blue dot floats up by your cursor; click and AI answers in place, powered by MiniMax M2.7-highspeed (no API key needed). Optionally plug in your own DeepSeek / Qwen / Zhipu / Kimi / OpenAI / Ollama key.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400;1,9..144,500&family=Hanken+Grotesk:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@300;400;500;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -137,7 +137,7 @@
   .demo-window .bar i:nth-child(3){background:#a9d6a0;}
   .demo-window .bar span{margin-left:12px;font-family:"Space Mono",monospace;font-size:12.5px;color:var(--ink-3);}
   #demoText{padding:40px 40px 46px;font-family:"Fraunces","Noto Sans SC",serif;font-size:clamp(20px,2.6vw,27px);
-    line-height:1.7;color:var(--ink);cursor:text;}
+    line-height:1.7;color:var(--ink);cursor:text;display:flex;flex-direction:column;gap:.5em;}
   #demoText .sent{transition:background .2s;}
   @media(max-width:560px){#demoText{padding:28px 24px 32px;}}
   .demo-hint{text-align:center;margin-top:26px;font-size:14.5px;color:var(--ink-2);display:flex;
@@ -164,6 +164,31 @@
   .dots3 b:nth-child(2){animation-delay:.15s;}
   .dots3 b:nth-child(3){animation-delay:.3s;}
   @keyframes d3{0%,100%{opacity:.3;transform:translateY(0);}40%{opacity:1;transform:translateY(-3px);}}
+
+  /* ---------- DEMO bubble tag + mono lines ---------- */
+  .demo-line{display:block;}
+  .demo-line .sent{cursor:text;border-radius:5px;transition:background .2s;padding:1px 2px;}
+  .demo-line .sent[data-mono="1"]{font-family:"Space Mono",monospace;font-size:.72em;
+    background:var(--paper-2);padding:4px 10px;border-radius:8px;color:var(--ink);line-height:2.4;}
+  .bub-tag{display:inline-block;font-family:"Space Mono",monospace;font-size:10px;font-weight:700;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--blue-deep);
+    background:var(--blue-soft);border-radius:5px;padding:2px 8px;margin-bottom:8px;}
+
+  /* ---------- SCENARIOS ---------- */
+  .scn-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);
+    border:1px solid var(--line);border-radius:18px;overflow:hidden;}
+  @media(max-width:880px){.scn-grid{grid-template-columns:repeat(2,1fr);}}
+  @media(max-width:560px){.scn-grid{grid-template-columns:1fr;}}
+  .scn{background:var(--paper);padding:30px 28px 32px;transition:background .25s;}
+  .scn:hover{background:var(--white);}
+  .scn .tag{display:inline-block;font-family:"Space Mono",monospace;font-size:11px;font-weight:700;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--blue-deep);
+    background:var(--blue-soft);border-radius:5px;padding:3px 9px;}
+  .scn h3{font-size:17.5px;font-weight:700;margin-top:14px;}
+  .scn p{color:var(--ink-2);font-size:14.5px;margin-top:9px;}
+  .scn-vision{text-align:center;margin-top:34px;font-family:"Fraunces","Noto Sans SC",serif;
+    font-style:italic;font-size:clamp(17px,2.1vw,21px);color:var(--blue-deep);}
+  html[lang="zh-CN"] .scn-vision{font-family:"Noto Sans SC",sans-serif;font-style:normal;font-weight:500;}
 
   /* ---------- FEATURES ---------- */
   .feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);
@@ -240,9 +265,10 @@
 
 <nav>
   <div class="wrap">
-    <a class="brand" href="#top"><span class="gldot">译</span>Select-translation <small data-i18n="brandSub">/ inline translate</small></a>
+    <a class="brand" href="#top"><span class="gldot">译</span>Select-translation <small data-i18n="brandSub">/ select to understand</small></a>
     <div class="navlinks">
       <a href="#demo" data-i18n="navDemo">Demo</a>
+      <a href="#scenarios" data-i18n="navScn">Scenarios</a>
       <a href="#features" data-i18n="navFeatures">Features</a>
       <a href="#how" data-i18n="navHow">How</a>
       <a class="gh" href="https://github.com/horton2048/Select-translation" target="_blank" rel="noopener">GitHub ↗</a>
@@ -255,9 +281,9 @@
   <div class="wrap hero-grid">
     <div>
       <span class="kicker reveal" data-i18n="heroKicker">Windows · macOS · Open source</span>
-      <h1 class="reveal" style="transition-delay:.06s" data-i18n="heroH1">Translate anywhere,<span class="l2">just by <mark>selecting</mark>.</span></h1>
-      <p class="hero-sub reveal" style="transition-delay:.12s" data-i18n="heroSub">Read foreign text like it's your own.</p>
-      <p class="hero-p reveal" style="transition-delay:.18s" data-i18n="heroP">In your browser, a PDF, your IDE, a chat window — select any text and a blue 译 dot floats up beside your cursor. Click it and MiniMax M2.7-highspeed streams the AI translation back — no API key, no setup. The hosted proxy is on us; bring your own AI when you want full control.</p>
+      <h1 class="reveal" style="transition-delay:.06s" data-i18n="heroH1">Understand anything,<span class="l2">just by <mark>selecting</mark>.</span></h1>
+      <p class="hero-sub reveal" style="transition-delay:.12s" data-i18n="heroSub">Foreign words, jargon, code, errors — just select.</p>
+      <p class="hero-p reveal" style="transition-delay:.18s" data-i18n="heroP">In your browser, a PDF, your IDE, a terminal — select anything you don't get and a blue dot floats up beside your cursor. Click it and AI translates, explains, or diagnoses it right there, streamed back in place. No API key, no setup — bring your own model when you want full control.</p>
       <div class="cta reveal" style="transition-delay:.24s">
         <a class="btn btn-primary" href="https://github.com/horton2048/Select-translation" target="_blank" rel="noopener" data-i18n="heroBtnInstall">Install from GitHub ↗</a>
         <a class="btn btn-ghost" href="#demo" data-i18n="heroBtnDemo">↓ Try it first</a>
@@ -282,16 +308,35 @@
   <div class="wrap">
     <div class="sec-head reveal" style="text-align:center;margin:0 auto 40px;">
       <span class="kicker" style="justify-content:center;" data-i18n="demoKicker">Live demo · TRY IT</span>
-      <h2 data-i18n="demoH2">No install needed — try it right on this page.</h2>
+      <h2 data-i18n="demoH2">Select different things — watch it figure out what you need.</h2>
     </div>
     <div class="demo-stage reveal">
       <div class="demo-window">
-        <div class="bar"><i></i><i></i><i></i><span data-i18n="demoBar">demo — select any line below</span></div>
+        <div class="bar"><i></i><i></i><i></i><span data-i18n="demoBar">demo — select a sentence, a term, or an error</span></div>
         <p id="demoText"></p>
       </div>
       <div class="demo-hint" data-i18n="demoHint">👆 Drag-select any line above <span>→ click the blue dot</span> <span class="key">Esc to close</span></div>
-      <p class="demo-cap" data-i18n="demoCap">This is exactly how it feels inside <b>any app</b> once installed.</p>
+      <p class="demo-cap" data-i18n="demoCap">Same gesture every time — it guesses translate, define, or diagnose for you.</p>
     </div>
+  </div>
+</section>
+
+<section id="scenarios">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <span class="kicker" data-i18n="scnKicker">Not just translation</span>
+      <h2 data-i18n="scnH2">One gesture. Whatever you selected, it understands.</h2>
+      <p data-i18n="scnP">It reads what you picked and which app you're in, then guesses what you need — and gets sharper the more you use it.</p>
+    </div>
+    <div class="scn-grid">
+      <div class="scn reveal"><span class="tag" data-i18n="scn1tag">Translate</span><h3 data-i18n="scn1t">Read foreign text</h3><p data-i18n="scn1d">Select a sentence in any language — get it in yours, right in place.</p></div>
+      <div class="scn reveal" style="transition-delay:.05s"><span class="tag" data-i18n="scn2tag">Diagnose</span><h3 data-i18n="scn2t">Decode an error</h3><p data-i18n="scn2d">Select a stack trace or error code — get the cause and the fix, not a literal translation.</p></div>
+      <div class="scn reveal" style="transition-delay:.1s"><span class="tag" data-i18n="scn3tag">Define</span><h3 data-i18n="scn3t">Unpack a term</h3><p data-i18n="scn3d">Select jargon or an acronym like RAG or idempotent — get a plain-language definition.</p></div>
+      <div class="scn reveal"><span class="tag" data-i18n="scn4tag">Identify</span><h3 data-i18n="scn4t">Who or what is this</h3><p data-i18n="scn4d">Select a product, company, or name — get a one-line identity and why it matters.</p></div>
+      <div class="scn reveal" style="transition-delay:.05s"><span class="tag" data-i18n="scn5tag">Explain</span><h3 data-i18n="scn5t">Make sense of code</h3><p data-i18n="scn5d">Select a regex, an API, or a snippet — get what it actually does.</p></div>
+      <div class="scn reveal" style="transition-delay:.1s"><span class="tag" data-i18n="scn6tag">Summarize</span><h3 data-i18n="scn6t">Shrink a long passage</h3><p data-i18n="scn6d">Select a wall of text — get the key points instead of a word-for-word dump.</p></div>
+    </div>
+    <p class="scn-vision reveal" data-i18n="scnVision">Guessed wrong? Select the same spot again — it takes another angle, and remembers, so next time it just knows.</p>
   </div>
 </section>
 
@@ -412,21 +457,21 @@
   // ---------- i18n ----------
   var I18N={
     en:{
-      _title:"Select — Translate anywhere, just by selecting",
-      brandSub:"/ inline translate",
-      navDemo:"Demo", navFeatures:"Features", navHow:"How",
+      _title:"Select — Understand anything, just by selecting",
+      brandSub:"/ select to understand",
+      navDemo:"Demo", navScn:"Scenarios", navFeatures:"Features", navHow:"How",
       heroKicker:"Windows · macOS · Open source",
-      heroH1:'Translate anywhere,<span class="l2">just by <mark>selecting</mark>.</span>',
-      heroSub:"Read foreign text like it's your own.",
-      heroP:"In your browser, a PDF, your IDE, a chat window — select any text and a blue 译 dot floats up beside your cursor. Click it and MiniMax M2.7-highspeed streams the AI translation back — no API key, no setup. The hosted proxy is on us; bring your own AI when you want full control.",
+      heroH1:'Understand anything,<span class="l2">just by <mark>selecting</mark>.</span>',
+      heroSub:"Foreign words, jargon, code, errors — just select.",
+      heroP:"In your browser, a PDF, your IDE, a terminal — select anything you don't get and a blue dot floats up beside your cursor. Click it and AI translates, explains, or diagnoses it right there, streamed back in place. No API key, no setup — bring your own model when you want full control.",
       heroBtnInstall:"Install from GitHub ↗",
       heroBtnDemo:"↓ Try it first",
       heroNote:'Powered by <b>MiniMax M2.7-highspeed</b> — free, no API key, no signup. Optional: plug in your own <b>DeepSeek · Qwen · Zhipu · Kimi · OpenAI · Ollama</b> key.',
       demoKicker:"Live demo · TRY IT",
-      demoH2:"No install needed — try it right on this page.",
-      demoBar:"demo — select any line below",
+      demoH2:"Select different things — watch it figure out what you need.",
+      demoBar:"demo — select a sentence, a term, or an error",
       demoHint:'👆 Drag-select any line above <span>→ click the blue dot</span> <span class="key">Esc to close</span>',
-      demoCap:"This is exactly how it feels inside <b>any app</b> once installed.",
+      demoCap:"Same gesture every time — it guesses translate, define, or diagnose for you.",
       featKicker:"Why it feels right",
       featH2:"Just a small dot —<br>but every detail is built to not interrupt you.",
       featP:"It won't hijack your clipboard or steal your window. It shows up only for the second you need it.",
@@ -451,26 +496,36 @@
       copyBtn:"Copy",
       installBtnOpen:"Open on GitHub ↗", installBtnDocs:"Read the docs",
       installMac:'On macOS, first grant access under <b>System Settings → Privacy &amp; Security → Accessibility / Input Monitoring</b>, then restart.',
-      footTagline:"A lightweight inline-translation desktop tool. Inspired by openai-translator, with an interaction closer to Youdao Dict / Bob: select → a dot appears by the cursor → click to translate.",
+      footTagline:"A lightweight desktop tool to understand anything you select — translate, define, explain, diagnose. Inspired by openai-translator, with an interaction closer to Youdao Dict / Bob: select → a dot appears by the cursor → click.",
       footDocs:"Docs", footTop:"Back to top",
+      scnKicker:"Not just translation",
+      scnH2:"One gesture. Whatever you selected, it understands.",
+      scnP:"It reads what you picked and which app you're in, then guesses what you need — and gets sharper the more you use it.",
+      scn1tag:"Translate", scn1t:"Read foreign text", scn1d:"Select a sentence in any language — get it in yours, right in place.",
+      scn2tag:"Diagnose", scn2t:"Decode an error", scn2d:"Select a stack trace or error code — get the cause and the fix, not a literal translation.",
+      scn3tag:"Define", scn3t:"Unpack a term", scn3d:"Select jargon or an acronym like RAG or idempotent — get a plain-language definition.",
+      scn4tag:"Identify", scn4t:"Who or what is this", scn4d:"Select a product, company, or name — get a one-line identity and why it matters.",
+      scn5tag:"Explain", scn5t:"Make sense of code", scn5d:"Select a regex, an API, or a snippet — get what it actually does.",
+      scn6tag:"Summarize", scn6t:"Shrink a long passage", scn6d:"Select a wall of text — get the key points instead of a word-for-word dump.",
+      scnVision:"Guessed wrong? Select the same spot again — it takes another angle, and remembers, so next time it just knows.",
       copied:"Copied ✓", copyfail:"Copy failed"
     },
     zh:{
       _title:"Select — 选中即懂",
-      brandSub:"/ 划词翻译",
-      navDemo:"演示", navFeatures:"特性", navHow:"怎么用",
+      brandSub:"/ 选中即懂",
+      navDemo:"演示", navScn:"场景", navFeatures:"特性", navHow:"怎么用",
       heroKicker:"Windows · macOS · 开源",
-      heroH1:'在任何应用里，<span class="l2"><mark>选中</mark>即译。</span>',
-      heroSub:"选中，就有译文。",
-      heroP:"浏览器、PDF、IDE、聊天窗口——拖选一段文字，光标旁浮起一个蓝色「译」圆点。点它，MiniMax M2.7-highspeed 把 AI 译文流式打回来——不用 API Key、不用任何配置。托管代理由作者承担，想要完全自主可切「自带 AI 大模型」。",
+      heroH1:'在任何应用里，<span class="l2"><mark>选中</mark>即懂。</span>',
+      heroSub:"看不懂的——外语、术语、代码、报错，选中就行。",
+      heroP:"浏览器、PDF、IDE、终端——选中任何看不懂的东西，光标旁浮起一个蓝色圆点。点它，AI 当场把它翻译、解释、或诊断出来，原地流式返回。不用 API Key、不用配置；想要完全自主，可接你自己的模型。",
       heroBtnInstall:"在 GitHub 安装 ↗",
       heroBtnDemo:"↓ 先试试效果",
       heroNote:'内置 <b>MiniMax M2.7-highspeed</b>，开箱即用——无需 API Key、无需注册。想要完全自主可接 <b>DeepSeek · 通义千问 · 智谱 · Kimi · OpenAI · Ollama</b> 等任意 OpenAI 兼容服务。',
       demoKicker:"实时演示 · TRY IT",
-      demoH2:"不用安装，先在这页上试一下。",
-      demoBar:"demo — 选中下面任意一句",
-      demoHint:'👆 用鼠标拖选上面任意一句 <span>→ 点蓝色圆点</span> <span class="key">Esc 关闭气泡</span>',
-      demoCap:"这就是装好之后，在你<b>任何应用</b>里的样子。",
+      demoH2:"选中不同的东西，看它怎么猜你要什么。",
+      demoBar:"demo — 选中一句话、一个术语、或一段报错",
+      demoHint:'👆 用鼠标拖选上面任意一行 <span>→ 点蓝色圆点</span> <span class="key">Esc 关闭气泡</span>',
+      demoCap:"同一个手势，每次都对——它替你判断该翻译、该定义、还是该诊断。",
       featKicker:"为什么顺手",
       featH2:'小到一个圆点，<br>但每个细节都为"不打断你"而设计。',
       featP:"它不抢你的剪贴板、不占你的窗口，只在你需要的那一秒出现。",
@@ -495,28 +550,43 @@
       copyBtn:"复制",
       installBtnOpen:"在 GitHub 打开 ↗", installBtnDocs:"阅读文档",
       installMac:'macOS 首次需在 <b>系统设置 → 隐私与安全性 → 辅助功能 / 输入监控</b> 里授权后重启。',
-      footTagline:"一个轻量的桌面划词翻译工具。灵感对标 openai-translator，交互更接近网易有道词典 / Bob：选中 → 光标旁出圆点 → 点击翻译。",
+      footTagline:"一个轻量的桌面理解工具：选中任何东西——翻译、定义、讲解、诊断。灵感对标 openai-translator，交互更接近网易有道词典 / Bob：选中 → 光标旁出圆点 → 点击。",
       footDocs:"文档", footTop:"回到顶部",
+      scnKicker:"不只是翻译",
+      scnH2:"同一个手势，选中什么，它就懂什么。",
+      scnP:"它根据你选了什么、在哪个应用里，猜你这次想要哪种理解——而且越用越准。",
+      scn1tag:"翻译", scn1t:"读外语", scn1d:"选中任意语言的一句话，原地变成你的母语。",
+      scn2tag:"诊断", scn2t:"看懂报错", scn2d:"选中报错或错误码，得到原因和修法，而不是把报错原样翻一遍。",
+      scn3tag:"定义", scn3t:"拆解术语", scn3d:"选中 RAG、idempotent 这类行话或缩写，得到一句大白话。",
+      scn4tag:"识别", scn4t:"这是谁/什么", scn4d:"选中产品、公司或人名，得到一句身份说明和为何值得知道。",
+      scn5tag:"讲解", scn5t:"看懂代码", scn5d:"选中一段正则、API 或代码，得到它到底在干嘛。",
+      scn6tag:"总结", scn6t:"压缩长文", scn6d:"选中一大段文字，得到要点，而不是逐字直译一大坨。",
+      scnVision:"猜得不对？在原地再划一次，它就换个角度——而且会记住，下次直接懂。",
       copied:"已复制 ✓", copyfail:"复制失败"
     }
   };
 
   // 演示句子：翻译"成"当前界面语言。en 界面 → 中译英；zh 界面 → 英译中。
+  // 多场景演示：选中不同类型 → 不同意图的答案。kind = 气泡里展示的意图标签。
   var DEMO={
     en:[
-      {src:"好奇心是一切成就的引擎。", dst:"Curiosity is the engine of every achievement."},
-      {src:"你停止发问的那一刻，就是你停止成长的那一刻。", dst:"The moment you stop asking questions is the moment you stop growing."},
-      {src:"广泛阅读，自由划选，让思想跨越语言的边界。", dst:"Read widely, select freely, and let ideas cross the borders of language."}
+      {src:"好奇心是一切成就的引擎。", kind:"Translate", answer:"Curiosity is the engine of every achievement."},
+      {src:"Error: EADDRINUSE: address already in use :::3000", mono:true, kind:"Diagnose", answer:"Port 3000 is already in use — usually a leftover process. Find it with lsof -i:3000, kill the PID, then retry."},
+      {src:"idempotent", kind:"Define", answer:"Idempotent: running an operation once or many times gives the same result — which is what makes retries safe."},
+      {src:"Mistral", kind:"Identify", answer:"A French AI lab known for open-weight models (Mistral / Mixtral), positioned against OpenAI and Anthropic."},
+      {src:"/^(?=.*\\d).{8,}$/", mono:true, kind:"Explain", answer:"A password check: at least 8 characters, and must contain at least one digit."}
     ],
     zh:[
-      {src:"Curiosity is the engine of every achievement.", dst:"好奇心是一切成就的引擎。"},
-      {src:"The moment you stop asking questions is the moment you stop growing.", dst:"你停止发问的那一刻，就是你停止成长的那一刻。"},
-      {src:"Read widely, select freely, and let ideas cross the borders of language.", dst:"广泛阅读，自由划选，让思想跨越语言的边界。"}
+      {src:"The cache is invalidated lazily.", kind:"翻译", answer:"缓存采用惰性失效——只在下次被访问时才真正清除，而不是立刻清。"},
+      {src:"Error: EADDRINUSE: address already in use :::3000", mono:true, kind:"诊断", answer:"3000 端口已被占用——多半是上次的进程没退干净。用 lsof -i:3000 找到 PID 杀掉，再重试即可。"},
+      {src:"idempotent", kind:"定义", answer:"幂等：同一个操作执行一次和执行多次，结果完全相同——所以失败重试才安全。"},
+      {src:"Mistral", kind:"识别", answer:"法国 AI 公司，以开源大模型起家（Mistral / Mixtral 系列），对标 OpenAI、Anthropic。"},
+      {src:"/^(?=.*\\d).{8,}$/", mono:true, kind:"讲解", answer:"一个密码校验正则：要求至少 8 位，且必须包含至少一个数字。"}
     ]
   };
   var PREVIEW={
-    en:{ html:'用外语阅读很慢。你卡在一个句子上，丢了线索，又伸手去翻字典。<span class="hl">要是翻译就在你光标所在的地方呢？</span>', bubble:"What if translation lived right where your cursor is?" },
-    zh:{ html:'Reading in a foreign language is slow. You hit a sentence, lose the thread, and reach for a dictionary. <span class="hl">What if translation lived right where your cursor is?</span>', bubble:"如果翻译就在你光标所在的地方呢？" }
+    en:{ html:'Deploy failed. The terminal spits out <span class="hl">Error: EADDRINUSE :::3000</span> and you have no idea why.', bubble:"Port 3000 is already taken — kill the leftover process and retry." },
+    zh:{ html:'部署失败，终端蹦出一行 <span class="hl">Error: EADDRINUSE :::3000</span>，你一脸懵。', bubble:"3000 端口被占用了——上个进程没退，杀掉它再重试。" }
   };
 
   var demoText=document.getElementById('demoText');
@@ -525,7 +595,7 @@
   var pvText=document.getElementById('pvText');
   var pvBubble=document.getElementById('pvBubble');
   var currentLang='en';
-  var pendingDst='';
+  var pendingDst='', pendingKind='';
   var streamTimer=null;
 
   function hideAll(){
@@ -538,8 +608,9 @@
 
   function renderDemo(lang){
     demoText.innerHTML = DEMO[lang].map(function(s){
-      return '<span class="sent" data-dst="'+esc(s.dst)+'">'+s.src+'</span>';
-    }).join(' ');
+      var mono = s.mono ? ' data-mono="1"' : '';
+      return '<span class="demo-line"><span class="sent" data-answer="'+esc(s.answer)+'" data-kind="'+esc(s.kind)+'"'+mono+'>'+esc(s.src)+'</span></span>';
+    }).join('');
   }
 
   function applyLang(lang){
@@ -582,16 +653,16 @@
   });
 
   // ---------- 交互式划词演示 ----------
-  function dstFromSelection(sel){
+  function sentFromSelection(sel){
     var node=sel.anchorNode;
     while(node && node!==demoText){
-      if(node.nodeType===1 && node.classList && node.classList.contains('sent')) return node.getAttribute('data-dst');
+      if(node.nodeType===1 && node.classList && node.classList.contains('sent')) return node;
       node=node.parentNode;
     }
     var txt=sel.toString().trim(), best=null, bestLen=0;
     demoText.querySelectorAll('.sent').forEach(function(s){
       var src=s.textContent.trim();
-      if(src.indexOf(txt)>=0 || txt.indexOf(src)>=0){ if(src.length>bestLen){ bestLen=src.length; best=s.getAttribute('data-dst'); } }
+      if(src.indexOf(txt)>=0 || txt.indexOf(src)>=0){ if(src.length>bestLen){ bestLen=src.length; best=s; } }
     });
     return best;
   }
@@ -602,9 +673,10 @@
       if(!sel || sel.isCollapsed){ return; }
       var txt=sel.toString().trim();
       if(txt.length<1){ hideAll(); return; }
-      var dst=dstFromSelection(sel);
-      if(!dst){ hideAll(); return; }
-      pendingDst=dst;
+      var sentEl=sentFromSelection(sel);
+      if(!sentEl){ hideAll(); return; }
+      pendingDst=sentEl.getAttribute('data-answer');
+      pendingKind=sentEl.getAttribute('data-kind');
       var rect=sel.getRangeAt(0).getBoundingClientRect();
       dot.style.left=(rect.right+4)+'px';
       dot.style.top=(rect.top-32)+'px';
@@ -620,22 +692,23 @@
     var by=dr.bottom+8;
     bubble.style.left=Math.max(12,bx)+'px';
     bubble.style.top=by+'px';
-    bubble.innerHTML='<span class="dots3"><b></b><b></b><b></b></span>';
+    var tag='<span class="bub-tag">'+esc(pendingKind)+'</span>';
+    bubble.innerHTML=tag+'<span class="dots3"><b></b><b></b><b></b></span>';
     bubble.style.display='block';
     dot.style.display='none';
     var i=0, chars=Array.from(pendingDst);
     if(streamTimer) clearInterval(streamTimer);
     setTimeout(function(){
-      bubble.innerHTML='<span id="streamOut"></span><span class="caret"></span>';
+      bubble.innerHTML=tag+'<span id="streamOut"></span><span class="caret"></span>';
       var out=document.getElementById('streamOut');
       streamTimer=setInterval(function(){
         if(i>=chars.length){
           clearInterval(streamTimer); streamTimer=null;
-          bubble.innerHTML='<span>'+pendingDst+'</span>';
+          bubble.innerHTML=tag+'<span>'+esc(pendingDst)+'</span>';
           return;
         }
         out.textContent+=chars[i++];
-      },55);
+      },32);
     },420);
   });
 
