@@ -8,6 +8,21 @@
 > 灵感与对标：[openai-translator](https://github.com/openai-translator/openai-translator)。
 > 主要差异：openai-translator 是"选中 → 按快捷键 → 弹窗"；本项目是"选中 → 光标旁出小图标 → 点击翻译"，更接近网易有道词典 / Bob 风格。
 
+## ⬇️ 下载即用（普通用户，无需 Python）
+
+不想碰命令行？直接下载安装包，双击就能用：
+
+| 版本 | 下载 | 适合 |
+|---|---|---|
+| **安装版（推荐）** | [**TranslatePopup-Setup.exe**](https://github.com/horton2048/Select-translation/releases/latest/download/TranslatePopup-Setup.exe) | 普通用户。双击一路「下一步」，自动建桌面/开始菜单图标 |
+| 免安装单文件 | [TranslatePopup.exe](https://github.com/horton2048/Select-translation/releases/latest/download/TranslatePopup.exe) | 喜欢绿色版，下载后直接双击运行 |
+
+> 📦 全部版本在 [**Releases 页**](https://github.com/horton2048/Select-translation/releases/latest)。
+> ✅ 打开即用：**无需 API Key、无需注册**，默认走作者代付的 AI 大模型，失效自动降级 Google 免费翻译。
+> ⚠️ 首次运行若被 Windows SmartScreen 拦截，点「更多信息 → 仍要运行」即可（个人开发者未做数字签名，属正常提示，不影响使用）。
+
+**三步上手**：① 任意应用里拖动选中文本 → ② 光标旁出现蓝色「译」圆点 → ③ 点圆点出译文。
+
 ## 卖点
 
 - **零门槛**：默认内置 MiniMax M2.7-highspeed，普通用户什么都不用配，划词即出 AI 译文
@@ -30,7 +45,9 @@
 
 代理已经做了最小防护：白名单 MiniMax chat 模型、限制 `max_tokens`/输入长度、22s 上游超时（对齐 Vercel Hobby Edge 函数的 25s 上限）。如果担心被恶意刷量，未来可加 Vercel KV 做 IP 限频。
 
-## 安装与运行（源码）
+## 从源码运行（开发者）
+
+> 普通用户请用上面的[「下载即用」](#️-下载即用普通用户无需-python)安装包，本节是给想改代码或自己打包的开发者。
 
 ### Windows
 
