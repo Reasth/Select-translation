@@ -100,6 +100,11 @@ pyz = PYZ(a.pure)
 
 if sys.platform == "darwin":
     # macOS：onedir + BUNDLE → 规范的 .app（onefile 与 .app 安全模型冲突）。
+    # 图标：用 build/AppIcon.icns（CI 会现场生成占位图标）。必须给真实存在的
+    # .icns，否则 PyInstaller 在 BUNDLE 阶段会去找默认 icns 并 FileNotFoundError。
+    import os as _os
+    _icns = _os.path.join("build", "AppIcon.icns")
+    _mac_icon = _icns if _os.path.exists(_icns) else None
     exe = EXE(
         pyz,
         a.scripts,
@@ -110,6 +115,7 @@ if sys.platform == "darwin":
         strip=False,
         upx=True,
         upx_exclude=_upx_exclude,
+        icon=_mac_icon,
         console=False,
     )
     coll = COLLECT(
@@ -124,7 +130,7 @@ if sys.platform == "darwin":
     app = BUNDLE(
         coll,
         name="TranslatePopup.app",
-        icon=None,
+        icon=_mac_icon,
         bundle_identifier="com.translatepopup.app",
         info_plist={
             "LSUIElement": True,  # 纯菜单栏应用，不占 Dock
