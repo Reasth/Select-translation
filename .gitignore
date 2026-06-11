@@ -26,3 +26,7 @@ installer/
 .idea/
 .vscode/
 .vercel
+
+# 策略/调研文档 — 不进公开仓库，也绝不放进部署目录 docs/
+research/
+decisions.md
