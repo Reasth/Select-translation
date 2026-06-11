@@ -25,6 +25,8 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName}
 OutputDir=installer
 OutputBaseFilename=TranslatePopup-Setup
+; 安装程序自身也用新图标（存在才生效，由本地/CI 生成）
+SetupIconFile=build\AppIcon.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
