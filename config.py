@@ -25,7 +25,7 @@ def normalize_base_url(value: str) -> str:
 
 
 # 客户端版本号，随发版变。通过 X-Client header 上报给代理日志，用于按版本聚合指标。
-CLIENT_VERSION = "1.3.1"
+CLIENT_VERSION = "1.4.0"
 
 # 托管代理是定值，不放进 Config（避免被本地配置改写指向别处）。
 HOSTED_PROXY_BASE_URL = "https://translate-omega-livid.vercel.app/api/v1"
@@ -52,6 +52,26 @@ _DEFAULT_SYSTEM_PROMPT = (
     "If the text is already in {target_lang}, give a brief paraphrase in English instead. "
     "Be concise: 1-3 sentences max. Output ONLY the answer — no prefix, no quotes, "
     "no labels, no thinking."
+)
+
+# 1.4 终端(Claude Code)场景变体:产品假设「终端划词 = Claude Code 会话里的零编程
+# 经验用户」。回答从「解释」升级为「消除焦虑 + 给下一步动作」:报错给严重度和可直接
+# 发给 Claude 的修复请求(👉 行,UI 据此显示一键复制按钮),命令给风险标识。
+# token 预算约束:本 prompt 控制在 ~160 token;输出默认仍 1-3 句,只有报错/命令
+# 才放宽到 5 句,90% 的查询成本与通用 prompt 持平。
+TERMINAL_SYSTEM_PROMPT = (
+    "The selected text comes from a terminal running Claude Code (Anthropic's AI "
+    "coding agent). The user is a non-programmer. Answer in {target_lang} using plain "
+    "everyday words; never explain jargon with more jargon. "
+    "If it's an error message: say what broke and how serious it is, then on a new "
+    "line write exactly '👉 ' followed by one short instruction the user can paste "
+    "to Claude to get it fixed. "
+    "If it's a shell command: start with ✅ (read-only/safe), ⚠️ (modifies files or "
+    "state) or 🛑 (destructive/hard to undo), then say what it does. "
+    "If it's Claude Code UI text or a technical term: explain what it means for the "
+    "user here. Otherwise translate or paraphrase it briefly. "
+    "Default 1-3 sentences; up to 5 for errors or commands. Output ONLY the answer — "
+    "no prefix, no labels, no thinking."
 )
 
 

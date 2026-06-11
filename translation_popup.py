@@ -15,23 +15,25 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import QLabel, QWidget
 
 from llm_client import LLMClient
+from terminal_context import extract_claude_suggestion
 
 
 class TranslateWorker(QThread):
     token_received = pyqtSignal(str)
     finished_translation = pyqtSignal()
 
-    def __init__(self, client: LLMClient, text: str, source: str = "click"):
+    def __init__(self, client: LLMClient, text: str, source: str = "click", terminal: bool = False):
         super().__init__()
         self.client = client
         self.text = text
         self.source = source  # 走到代理端会变成 X-Source header,用于区分 eager/click
+        self.terminal = terminal  # 终端(Claude Code)场景:走终端专用 prompt
         # QThread 必须在 run() 真正返回后再析构,否则 Qt 喊 qFatal → fast-fail
         # 0xc0000409 P9=7。让线程自己接 finished→deleteLater,外部一律不再直接 delete。
         self.finished.connect(self.deleteLater)
 
     def run(self):
-        for token in self.client.stream_translate(self.text, source=self.source):
+        for token in self.client.stream_translate(self.text, source=self.source, terminal=self.terminal):
             if self.isInterruptionRequested():
                 break
             self.token_received.emit(token)
@@ -106,12 +108,15 @@ class LoadingDots(QWidget):
 
 class TranslationPopup(QWidget):
     MAX_TEXT_WIDTH = 320
+    # 终端(Claude Code)场景:报错解释带「严重度 + 建议」,内容比普通释义长,放宽到 420。
+    TERMINAL_MAX_TEXT_WIDTH = 420
     MIN_BUBBLE_WIDTH = 54
     PAD_H = 12
     PAD_V = 8
     SHADOW_PAD = 10
 
     closed = pyqtSignal()  # 隐藏（关闭）时发出 → 上层据此取消 eager worker
+    suggestion_copied = pyqtSignal()  # 用户点了「复制给 Claude」→ 上层打点
 
     def __init__(self, client: LLMClient):
         super().__init__()
@@ -119,6 +124,9 @@ class TranslationPopup(QWidget):
         self._worker: TranslateWorker | None = None
         self._drag_offset: QPoint | None = None
         self._buffer: str = ""
+        self._terminal: bool = False
+        self._max_text_width: int = self.MAX_TEXT_WIDTH
+        self._claude_suggestion: str = ""
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -145,6 +153,16 @@ class TranslationPopup(QWidget):
         self.loading = LoadingDots()
         self.loading.setParent(self.card)
 
+        # 终端场景报错回答里的「👉 建议」一键复制入口。平时隐藏,worker 收尾时检测到
+        # 建议行才显示——纯 QLabel,零新依赖。
+        self.copy_label = QLabel("📋 复制给 Claude", self.card)
+        self.copy_label.setStyleSheet(
+            "QLabel { background: transparent; color: #2563eb; font-size: 12px; }"
+        )
+        self.copy_label.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.copy_label.hide()
+        self.copy_label.mousePressEvent = self._copy_label_press
+
         self.card.mousePressEvent = self._card_press
         self.card.mouseMoveEvent = self._card_move
 
@@ -159,19 +177,35 @@ class TranslationPopup(QWidget):
         if self._drag_offset is not None and event.buttons() & Qt.MouseButton.LeftButton:
             self.move(event.globalPosition().toPoint() - self._drag_offset)
 
-    def start_translation(self, text: str) -> None:
+    def _copy_label_press(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self._claude_suggestion:
+            QGuiApplication.clipboard().setText(self._claude_suggestion)
+            self.copy_label.setText("✓ 已复制，粘贴给 Claude 即可")
+            self._resize_to_text()
+            self.suggestion_copied.emit()
+
+    def _set_terminal_mode(self, terminal: bool) -> None:
+        self._terminal = terminal
+        self._max_text_width = self.TERMINAL_MAX_TEXT_WIDTH if terminal else self.MAX_TEXT_WIDTH
+        self._claude_suggestion = ""
+        self.copy_label.setText("📋 复制给 Claude")
+        self.copy_label.hide()
+
+    def start_translation(self, text: str, *, terminal: bool = False) -> None:
         self.cancel_translation()
+        self._set_terminal_mode(terminal)
         self._buffer = ""
         self.result_label.setText("")
         self._show_loading()
 
-        self._worker = TranslateWorker(self.client, text)
+        self._worker = TranslateWorker(self.client, text, terminal=terminal)
         self._worker.token_received.connect(self._on_token)
         self._worker.finished_translation.connect(self._on_worker_finished)
         self._worker.start()
 
     def show_message(self, message: str) -> None:
         self.cancel_translation()
+        self._set_terminal_mode(False)
         self._buffer = message
         self.loading.stop()
         self.result_label.show()
@@ -200,6 +234,7 @@ class TranslationPopup(QWidget):
         这条流程的第一步,让用户在 Ctrl+Shift+C 真发出去之前先看到 popup,选区被宿主
         清掉的瞬间被 popup 弹出遮蔽。"""
         self.cancel_translation()
+        self._set_terminal_mode(False)
         self._buffer = ""
         self.result_label.setText("")
         self._show_loading()
@@ -207,6 +242,7 @@ class TranslationPopup(QWidget):
     def present_eager(self, buffer: str) -> None:
         """以一段 eager 已收的 buffer 起头展示;后续 token 由上层 append_eager_token 推。"""
         self.cancel_translation()  # 清掉任何内部 worker
+        self._set_terminal_mode(False)  # eager 只在非终端场景起,宽度/按钮回到默认
         self._buffer = buffer
         if buffer:
             self.loading.stop()
@@ -254,18 +290,25 @@ class TranslationPopup(QWidget):
         text = self.result_label.text() or " "
         fm = self.result_label.fontMetrics()
         longest_line = max((fm.horizontalAdvance(line) for line in text.splitlines()), default=20)
-        text_w = min(self.MAX_TEXT_WIDTH, max(20, longest_line))
+        text_w = min(self._max_text_width, max(20, longest_line))
         rect = fm.boundingRect(QRect(0, 0, text_w, 10000), Qt.TextFlag.TextWordWrap, text)
         text_h = max(rect.height(), fm.height())
 
+        copy_h = 0
+        if not self.copy_label.isHidden():
+            self.copy_label.adjustSize()
+            copy_h = self.copy_label.height() + 6
+
         bubble_w = max(self.MIN_BUBBLE_WIDTH, text_w + self.PAD_H * 2)
-        bubble_h = text_h + self.PAD_V * 2
+        bubble_h = text_h + copy_h + self.PAD_V * 2
         card_w = BubbleFrame.TAIL_W + bubble_w
         card_h = bubble_h
 
         self._set_shell_size(card_w, card_h)
         self.result_label.setFixedSize(text_w, text_h)
         self.result_label.move(BubbleFrame.TAIL_W + self.PAD_H, self.PAD_V)
+        if copy_h:
+            self.copy_label.move(BubbleFrame.TAIL_W + self.PAD_H, self.PAD_V + text_h + 6)
 
     def _set_shell_size(self, card_w: int, card_h: int):
         self.card.setGeometry(self.SHADOW_PAD, self.SHADOW_PAD, card_w, card_h)
@@ -278,6 +321,13 @@ class TranslationPopup(QWidget):
         if not self._buffer:
             self.loading.stop()
             self.show_message("未收到翻译内容。")
+        elif self._terminal:
+            # 终端场景:回答里有「👉 建议」行(报错的修复请求)就亮出一键复制入口。
+            suggestion = extract_claude_suggestion(self._buffer)
+            if suggestion:
+                self._claude_suggestion = suggestion
+                self.copy_label.show()
+                self._resize_to_text()
         logging.info(
             "popup geometry: widget=%dx%d card=%dx%d text=%dx%d loading=%s",
             self.width(),

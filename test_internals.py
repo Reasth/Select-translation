@@ -211,6 +211,63 @@ def test_stream_strips_leading_whitespace():
     assert out == "Hello world", f"got: {out!r}"
 
 
+def test_clean_terminal_text():
+    from terminal_context import clean_terminal_text
+    # Claude Code 对话框边框 + 行首标记应被剥掉
+    assert clean_terminal_text("╭─────╮\n│ hi  │\n╰─────╯") == "hi"
+    assert clean_terminal_text("⏺ Bash(npm install)") == "Bash(npm install)"
+    assert clean_terminal_text("$ git push") == "git push"
+    # 被终端宽度硬切断的行应合并(上行无结束标点 + 下行小写开头)
+    out = clean_terminal_text("ModuleNotFoundError: No module named\nrequests")
+    assert out == "ModuleNotFoundError: No module named requests", f"got: {out!r}"
+    # 句子完整的多行保持换行
+    out2 = clean_terminal_text("First line.\nSecond line.")
+    assert out2 == "First line.\nSecond line.", f"got: {out2!r}"
+    # 清洗后为空时退回原文
+    assert clean_terminal_text("│││") == "│││"
+
+
+def test_glossary_lookup():
+    from terminal_context import lookup_glossary
+    assert lookup_glossary("MCP") is not None
+    assert lookup_glossary("  mcp:  ") is not None  # 大小写/空白/尾标点都能命中
+    assert lookup_glossary("`package.json`") is not None  # 包裹的反引号剥掉
+    assert lookup_glossary("/clear") is not None
+    assert lookup_glossary("merge conflict") is not None
+    assert lookup_glossary("不存在的词xyz") is None
+    assert lookup_glossary("a" * 50) is None  # 超长 → 交给 LLM
+    assert lookup_glossary("two\nlines") is None  # 多行 → 交给 LLM
+
+
+def test_extract_claude_suggestion():
+    from terminal_context import extract_claude_suggestion
+    ans = "端口被占了，不严重。\n👉 发给 Claude：帮我换一个端口重启服务"
+    assert extract_claude_suggestion(ans) == "帮我换一个端口重启服务"
+    assert extract_claude_suggestion("👉 fix the port conflict") == "fix the port conflict"
+    assert extract_claude_suggestion("没有建议行的回答。") is None
+    assert extract_claude_suggestion("") is None
+
+
+def test_terminal_prompt_payload():
+    from config import Config, TERMINAL_SYSTEM_PROMPT
+    from llm_client import _build_chat_payload
+
+    cfg = Config()
+    # 终端场景 + 默认 prompt → 换用终端变体
+    p = _build_chat_payload(cfg, "EADDRINUSE", model="m", stream=False, terminal=True)
+    assert p["messages"][0]["content"] == TERMINAL_SYSTEM_PROMPT.format(target_lang="中文")
+    # 非终端 → 仍是通用 prompt
+    p2 = _build_chat_payload(cfg, "EADDRINUSE", model="m", stream=False)
+    assert "Claude Code" not in p2["messages"][0]["content"]
+    # 终端场景不做中→英反转:选中 Claude 的中文输出也用中文解释
+    p3 = _build_chat_payload(cfg, "正在压缩对话", model="m", stream=False, terminal=True)
+    assert "中文" in p3["messages"][0]["content"]
+    # 用户自定义过 prompt → 终端场景也尊重,不覆盖
+    cfg.system_prompt = "CUSTOM PROMPT {target_lang}"
+    p4 = _build_chat_payload(cfg, "EADDRINUSE", model="m", stream=False, terminal=True)
+    assert p4["messages"][0]["content"].startswith("CUSTOM PROMPT")
+
+
 def test_grab_restores_clipboard_when_no_selection():
     """没有选中任何文本时，剪贴板应该恢复原状。"""
     from selection_monitor import grab_selected_text
@@ -299,6 +356,10 @@ def main():
         test_short_error_formats_json_message,
         test_resolve_endpoint_picks_hosted_constants,
         test_resolve_endpoint_ai_requires_key,
+        test_clean_terminal_text,
+        test_glossary_lookup,
+        test_extract_claude_suggestion,
+        test_terminal_prompt_payload,
         test_hosted_falls_back_to_free_when_proxy_fails,
         test_qthread_signal_to_qobject_bound_method_runs_on_main_thread,
         test_normalize_base_url_accepts_full_chat_endpoint,

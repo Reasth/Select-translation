@@ -11,6 +11,8 @@ from config import (
     CLIENT_VERSION,
     HOSTED_DEFAULT_MODEL,
     HOSTED_PROXY_BASE_URL,
+    TERMINAL_SYSTEM_PROMPT,
+    _DEFAULT_SYSTEM_PROMPT,
     Config,
     normalize_base_url,
 )
@@ -42,13 +44,20 @@ def _build_chat_payload(
     stream: bool,
     max_tokens: Optional[int] = None,
     extra: Optional[dict] = None,
+    terminal: bool = False,
 ) -> dict:
-    actual_target = resolve_target_lang(text, cfg.target_lang)
+    # 终端场景不做「中文原文→反向翻英文」:用户选中 Claude 的中文输出时要的是
+    # 中文解释这段话在说什么,而不是英文翻译。
+    actual_target = cfg.target_lang if terminal else resolve_target_lang(text, cfg.target_lang)
+    # 终端变体只在用户没自定义过 prompt 时启用——自定义过的是 power user,尊重其设置。
+    system_prompt = cfg.system_prompt
+    if terminal and cfg.system_prompt.strip() == _DEFAULT_SYSTEM_PROMPT.strip():
+        system_prompt = TERMINAL_SYSTEM_PROMPT
     payload: dict = {
         "model": model,
         "stream": stream,
         "messages": [
-            {"role": "system", "content": cfg.system_prompt.format(target_lang=actual_target)},
+            {"role": "system", "content": system_prompt.format(target_lang=actual_target)},
             {"role": "user", "content": text},
         ],
         "temperature": 0.2,
@@ -186,12 +195,15 @@ class LLMClient:
         auth_token: Optional[str],
         extra_payload: Optional[dict] = None,
         extra_headers: Optional[dict] = None,
+        terminal: bool = False,
     ) -> Iterator[str]:
         """通用 OpenAI 兼容流式调用。网络/HTTP 错误向上抛 HttpStreamError。"""
         headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
         if extra_headers:
             headers.update(extra_headers)
-        payload = _build_chat_payload(self.cfg, text, model=model, stream=True, extra=extra_payload)
+        payload = _build_chat_payload(
+            self.cfg, text, model=model, stream=True, extra=extra_payload, terminal=terminal
+        )
         for raw in http_util.stream_post_lines(
             base_url + "/chat/completions",
             payload,
@@ -217,7 +229,7 @@ class LLMClient:
             if token:
                 yield token
 
-    def _ai_stream(self, text: str) -> Iterator[str]:
+    def _ai_stream(self, text: str, *, terminal: bool = False) -> Iterator[str]:
         """AI 档：缺配置或网络错误以 [..] 形式回显，便于排查自家 Key。"""
         base_url, model, auth_token, err = _resolve_endpoint(self.cfg)
         if err:
@@ -225,12 +237,12 @@ class LLMClient:
             return
         try:
             yield from self._stream_openai_compat(
-                text, base_url=base_url, model=model, auth_token=auth_token
+                text, base_url=base_url, model=model, auth_token=auth_token, terminal=terminal
             )
         except http_util.HttpStreamError as e:
             yield f"[{e.message}]"
 
-    def _hosted_stream(self, text: str, *, source: str = "click") -> Iterator[str]:
+    def _hosted_stream(self, text: str, *, source: str = "click", terminal: bool = False) -> Iterator[str]:
         """托管档：用作者代付的代理；失败时静默降级到免费引擎，保证「打开就能翻译」。
         thinking=disabled 在 M3 上是真禁推理（实测 0 think token，TTFT 直接降到 ~3s）。
         source 决定 X-Source header（eager|click），用于代理端日志区分预翻译命中率。"""
@@ -250,15 +262,21 @@ class LLMClient:
                 auth_token=None,
                 extra_payload={"thinking": {"type": "disabled"}},
                 extra_headers=headers,
+                terminal=terminal,
             )
         except http_util.HttpStreamError as e:
             logging.warning("hosted engine failed (%s), falling back to free", e.message)
             yield from engines.stream_free_translate(text, self.cfg.target_lang)
 
-    def stream_translate(self, text: str, *, source: str = "click") -> Iterator[str]:
+    def stream_translate(self, text: str, *, source: str = "click", terminal: bool = False) -> Iterator[str]:
+        # terminal=True 表示文本选自终端(按产品假设即 Claude Code 会话),走终端
+        # 专用 prompt:报错给修复建议、命令给风险标识。free 引擎是纯翻译,无视该标志。
         engine = self.cfg.engine
         if engine == "free":
             yield from engines.stream_free_translate(text, self.cfg.target_lang)
             return
-        raw = self._hosted_stream(text, source=source) if engine == "hosted" else self._ai_stream(text)
+        if engine == "hosted":
+            raw = self._hosted_stream(text, source=source, terminal=terminal)
+        else:
+            raw = self._ai_stream(text, terminal=terminal)
         yield from _strip_leading_whitespace(_filter_think(raw))

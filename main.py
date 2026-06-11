@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import QApplication
 
 from config import CONFIG_DIR, Config
 from floating_icon import FloatingIcon
+from langs import lang_to_code
 from llm_client import LLMClient
 from platform_backend import foreground_app, is_autostart, set_autostart
 from selection_monitor import (
@@ -20,6 +21,7 @@ from selection_monitor import (
     grab_selected_text,
     is_foreground_terminal,
 )
+from terminal_context import clean_terminal_text, lookup_glossary
 from settings_dialog import SettingsDialog
 from telemetry import Telemetry, ensure_install_id, new_session_id
 from translation_popup import TranslateWorker, TranslationPopup
@@ -83,6 +85,10 @@ class App(QObject):
         # 这个 grabber 在后台把 Ctrl+Shift+C 发出去,选区清除被 popup 遮蔽。
         self._click_grabber: SelectionGrabber | None = None
         self._click_anchor: QPoint | None = None
+        # 划词那一刻前台是否终端。按产品假设「终端 = Claude Code 会话」,该标志决定
+        # 点击后走终端专用 prompt/词典/弹窗宽度。在选区结束时采样,点击时直接用——
+        # 点击时圆点/popup 可能已抢前台,再探测会失真。
+        self._selection_terminal_fg: bool = False
 
         # ---- Eager 翻译状态 ----
         # 选中文本一就绪就预发请求,用户移鼠标→点圆点的几百毫秒里 API 已经在跑。
@@ -97,6 +103,9 @@ class App(QObject):
         self.icon.clicked.connect(self._on_icon_clicked)
         self.icon.auto_hidden.connect(self._on_icon_auto_hidden)
         self.popup.closed.connect(self._on_popup_closed)
+        self.popup.suggestion_copied.connect(
+            lambda: self.telemetry.fire("claude_suggestion_copied")
+        )
         self.tray.toggle_enabled.connect(self._on_toggle_enabled)
         self.tray.toggle_autostart.connect(self._on_toggle_autostart)
         self.tray.open_settings.connect(self._on_open_settings)
@@ -201,6 +210,7 @@ class App(QObject):
         self.icon.show_near_cursor(lx, ly, lifetime_ms=self.cfg.show_icon_ms)
         drag_px = max(abs(release_x - press_x), abs(release_y - press_y))
         terminal_fg = is_foreground_terminal()
+        self._selection_terminal_fg = terminal_fg
         app_name, win_title = foreground_app()
         # 窗口标题留 200 字以内,够分类/分析,够远离「整页 URL 截屏」级别隐私。
         self.telemetry.fire("icon_shown", {
@@ -448,16 +458,31 @@ class App(QObject):
                 "reason": "no_text", "len": len(text), "deferred": True,
             })
             return
+        terminal = self._selection_terminal_fg
+        if terminal:
+            # 终端选区常带 Claude Code 的边框字符/状态标记/硬换行,清掉再进 LLM——
+            # 噪音字符也是要花钱的 input token。
+            text = clean_terminal_text(text)
+            # 高频术语先查本地词典:命中 = 零请求、零 token、零延迟。
+            # 词典是中文口径,只在目标语言为中文时启用。
+            if lang_to_code(self.cfg.target_lang, default="en").startswith("zh"):
+                gloss = lookup_glossary(text)
+                if gloss:
+                    self.popup.show_message(gloss)
+                    logging.info("glossary hit, len=%s", len(text))
+                    self.telemetry.fire("glossary_hit", {"term": text[:40]})
+                    return
         # popup 已经是 loading 形态,直接 start_translation 接过去(cancel_translation 是 no-op,
         # 不会闪掉 loading 视觉)。
         self._popup_consuming_text = ""
-        self.popup.start_translation(text)
-        logging.info("deferred grab captured, len=%s", len(text))
+        self.popup.start_translation(text, terminal=terminal)
+        logging.info("deferred grab captured, len=%s terminal=%s", len(text), terminal)
         self.telemetry.fire("translation_started", {
             "text_len": len(text),
             "eager_existed": False,
             "eager_text_mismatch": False,
             "deferred": True,
+            "terminal": terminal,
         })
 
 
