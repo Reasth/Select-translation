@@ -139,6 +139,10 @@ if sys.platform == "darwin":
     )
 else:
     # Windows / Linux：单文件 exe，便于分发。
+    # 图标：用 build/AppIcon.ico（存在才设，避免本机没生成图标时打包失败）。
+    import os as _os
+    _ico = _os.path.join("build", "AppIcon.ico")
+    _win_icon = _ico if _os.path.exists(_ico) else None
     exe = EXE(
         pyz,
         a.scripts,
@@ -152,6 +156,7 @@ else:
         upx=True,
         upx_exclude=_upx_exclude,
         runtime_tmpdir=None,
+        icon=_win_icon,
         console=False,
         disable_windowed_traceback=False,
     )
