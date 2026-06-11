@@ -1,11 +1,27 @@
 from __future__ import annotations
 
+import os
+import sys
+
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtGui import QAction, QColor, QFont, QIcon, QPainter, QPixmap
 from PyQt6.QtWidgets import QMenu, QSystemTrayIcon
 
 
+def _bundled(*parts: str) -> str:
+    """资源绝对路径：onefile 用 _MEIPASS，开发态用脚本所在目录。"""
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, *parts)
+
+
 def make_icon() -> QIcon:
+    # 优先用打进包里的品牌图标（灯泡 + I-beam），失败再退回代码绘制。
+    path = _bundled("assets", "tray.png")
+    if os.path.exists(path):
+        ic = QIcon(path)
+        if not ic.isNull():
+            return ic
+
     pm = QPixmap(64, 64)
     pm.fill(QColor(0, 0, 0, 0))
     p = QPainter(pm)
