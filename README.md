@@ -10,14 +10,11 @@
 
 ## ⬇️ 下载即用（普通用户，无需 Python）
 
-不想碰命令行？直接下载安装包，双击就能用：
+不想碰命令行？直接下载安装包，双击一路「下一步」就能用：
 
-| 版本 | 下载 | 适合 |
-|---|---|---|
-| **安装版（推荐）** | [**TranslatePopup-Setup.exe**](https://github.com/horton2048/Select-translation/releases/latest/download/TranslatePopup-Setup.exe) | 普通用户。双击一路「下一步」，自动建桌面/开始菜单图标 |
-| 免安装单文件 | [TranslatePopup.exe](https://github.com/horton2048/Select-translation/releases/latest/download/TranslatePopup.exe) | 喜欢绿色版，下载后直接双击运行 |
+**⬇️ [下载 TranslatePopup-Setup.exe](https://github.com/horton2048/Select-translation/releases/latest/download/TranslatePopup-Setup.exe)**（Windows，自动建桌面/开始菜单图标，可随时卸载）
 
-> 📦 全部版本在 [**Releases 页**](https://github.com/horton2048/Select-translation/releases/latest)。
+> 📦 macOS 版与历史版本在 [**Releases 页**](https://github.com/horton2048/Select-translation/releases/latest)。
 > ✅ 打开即用：**无需 API Key、无需注册**，默认走作者代付的 AI 大模型，失效自动降级 Google 免费翻译。
 > ⚠️ 首次运行若被 Windows SmartScreen 拦截，点「更多信息 → 仍要运行」即可（个人开发者未做数字签名，属正常提示，不影响使用）。
 
@@ -156,7 +153,7 @@ translate/
 ├── api/v1/chat/completions.mjs      # Vercel Edge 代理函数（托管档后端，附 metric 落 Supabase）
 ├── api/event.mjs                    # 客户端事件端点（每次 popup/click/settings 改动写一行 events 表）
 ├── api/_supabase.mjs                # Supabase events 表写入封装（两端共用）
-├── analyze_metrics.py               # 拉 Supabase events 表出每日量/eager 命中/P50P95 延迟/错误的小报
+├── scripts/                         # 开发/运维脚本：图标生成、ICO 转换、埋点指标小报
 ├── TranslatePopup.spec              # PyInstaller 瘦身打包配置
 ├── build_win.ps1                    # Windows 一键打包脚本
 ├── start_mac.command                # macOS 双击启动
@@ -167,16 +164,15 @@ translate/
 
 打包用 `TranslatePopup.spec`，已做极致瘦身：只保留 `QtCore/QtGui/QtWidgets`，排除其余 31 个 Qt 模块与无关大包。
 
-### Windows → exe
+### Windows → 安装包
+
+需要先装 [Inno Setup 6](https://jrsoftware.org/isdl.php)，然后一条命令出安装包：
 
 ```powershell
 ./build_win.ps1
-# 或手动：
-python -m pip install pyinstaller
-python -m PyInstaller --noconfirm TranslatePopup.spec
 ```
 
-产物在 `dist/TranslatePopup.exe`（实测约 35MB）。装了 [UPX](https://upx.github.io/) 后重打约 32MB——onefile 包本身已二次压缩，UPX 增益有限（约 10%）。
+唯一产物是 `installer/TranslatePopup-Setup.exe`（约 28MB）——也是对外分发的唯一版本。中间会先在 `dist/` 打出单文件 exe，那只是安装包的原料，不单独分发。装了 [UPX](https://upx.github.io/) 可再省约 10%（onefile 已二次压缩，增益有限）。
 
 ### macOS → .app
 
@@ -212,7 +208,7 @@ python test_internals.py
 
 ```bash
 vercel env pull .env.local    # 首次:把 SUPABASE_URL + ANON_KEY 拉到本地
-python analyze_metrics.py --since 1d
+python scripts/analyze_metrics.py --since 1d
 ```
 
 输出:每日事件数、独立 install/session、proxy 延迟 P50/P95、source/model/thinking 分布、eager 漏斗(started/adopted/completed/cancelled + 命中率)、客户端事件 Top 20、版本分布。`--since 30m/6h/1d/7d` 调窗,`--raw` 倒出原始 JSON。

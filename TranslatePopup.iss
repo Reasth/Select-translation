@@ -7,7 +7,7 @@
 
 #define MyAppName "Select"
 #define MyAppNameEng "Select"
-#define MyAppVersion "1.4.0"
+#define MyAppVersion "1.4.1"
 #define MyAppPublisher "translate-popup"
 #define MyAppExeName "TranslatePopup.exe"
 #define MyAppURL "https://translate-omega-livid.vercel.app/"

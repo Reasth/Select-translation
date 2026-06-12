@@ -95,6 +95,7 @@ class App(QObject):
         self._eager_text: str = ""           # 当前预翻译的原文（也用于过滤陈旧 worker 的信号）
         self._eager_buffer: str = ""         # 累计收到的可见 token
         self._eager_done: bool = False       # 预翻译是否完成
+        self._eager_started_at: float = 0.0  # 本轮 eager 的起点（time.monotonic）
         self._eager_worker: TranslateWorker | None = None
         self._popup_consuming_text: str = ""  # 当前 popup 正在显示的 eager 对应的原文
 
@@ -234,7 +235,8 @@ class App(QObject):
     def _kick_grab(self) -> None:
         # 旧 grabber 还在跑就丢引用,让它自然结束(captured 信号被 sender() != self._grabber 过滤掉)。
         # 不强杀:杀一个还在 isRunning 的 QThread = 0xc0000409。
-        use_shift = is_foreground_terminal() if sys.platform == "win32" else False
+        # use_shift 用划词时采样的 _selection_terminal_fg(见 __init__ 注释),不再重探前台窗口。
+        use_shift = sys.platform == "win32" and self._selection_terminal_fg
         g = SelectionGrabber(use_shift=use_shift, timeout_ms=300, restore=True)
         g.captured.connect(self._on_grab_captured)
         self._grabber = g
@@ -324,7 +326,7 @@ class App(QObject):
         self._eager_done = True
         if self._popup_consuming_text == self._eager_text and self.popup.isVisible():
             self.popup.mark_eager_done()
-        dt_ms = int((time.monotonic() - getattr(self, "_eager_started_at", time.monotonic())) * 1000)
+        dt_ms = int((time.monotonic() - self._eager_started_at) * 1000)
         self.telemetry.fire("eager_completed", {
             "chars": len(self._eager_buffer),
             "duration_ms": dt_ms,
@@ -437,7 +439,8 @@ class App(QObject):
         })
 
     def _start_click_grabber(self) -> None:
-        use_shift = is_foreground_terminal() if sys.platform == "win32" else False
+        # use_shift 用划词时采样的 _selection_terminal_fg:此刻 popup 已抢前台,再探测会失真。
+        use_shift = sys.platform == "win32" and self._selection_terminal_fg
         # restore=False:click 时让选区文本留在剪贴板里(与用户主动 Ctrl+C 的语义一致)。
         g = SelectionGrabber(use_shift=use_shift, timeout_ms=300, restore=False)
         g.captured.connect(self._on_click_grab_captured)

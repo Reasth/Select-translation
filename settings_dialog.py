@@ -210,7 +210,6 @@ class SettingsDialog(QDialog):
             api_key=self.api_key_edit.text().strip(),
             model=self.model_edit.text().strip(),
             target_lang=self.target_lang_combo.currentText().strip() or "中文",
-            source_lang=self.cfg.source_lang,
             enabled=self.cfg.enabled,
             autostart=self.cfg.autostart,
             show_icon_ms=self.cfg.show_icon_ms,

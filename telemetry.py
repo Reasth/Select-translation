@@ -12,15 +12,13 @@
 """
 from __future__ import annotations
 
-import json
 import logging
 import threading
-import urllib.error
-import urllib.request
 from typing import Any
 from uuid import uuid4
 
 from config import CLIENT_VERSION, HOSTED_PROXY_BASE_URL
+from http_util import post_json
 
 
 # .../api/v1 → .../api/event。和翻译端点共享 host,但路径不一样。
@@ -59,29 +57,20 @@ class Telemetry:
         ).start()
 
     def _send(self, event: str, props: dict[str, Any]) -> None:
+        # 永远不要让埋点拖垮主流程：post_json 把网络/HTTP 错误收进返回值,
+        # 这里只兜 props 不可序列化等极端情况,日志一律降级到 DEBUG。
         try:
-            body = json.dumps({"event": event, "props": props}).encode("utf-8")
-        except (TypeError, ValueError):
-            return  # props 里有不可序列化的对象,丢
-        req = urllib.request.Request(
-            _EVENT_URL,
-            data=body,
-            headers={
-                "Content-Type": "application/json",
-                "X-Client": self.client,
-                "X-Install-Id": self.install_id,
-                "X-Session-Id": self.session_id,
-            },
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
-                r.read()
-        except (urllib.error.URLError, urllib.error.HTTPError, OSError):
-            # 永远不要让埋点拖垮主流程。日志降级到 DEBUG。
-            logging.debug("telemetry fire failed event=%s", event, exc_info=False)
+            res = post_json(
+                _EVENT_URL,
+                {"event": event, "props": props},
+                headers=self.telemetry_headers(),
+                timeout=_TIMEOUT,
+            )
         except Exception:
             logging.debug("telemetry fire crashed event=%s", event, exc_info=False)
+            return
+        if not res.ok:
+            logging.debug("telemetry fire failed event=%s: %s", event, res.error)
 
     def telemetry_headers(self) -> dict[str, str]:
         """供翻译请求复用的同套 ID 头,让代理端 metric 行也能挂上 install_id/session_id。"""

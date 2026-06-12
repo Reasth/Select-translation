@@ -15,7 +15,11 @@ _launch_*.log
 
 build/
 dist/
+dist-mac/
 installer/
+
+# scripts/design_logo.py 的生成产物（CI 用 assets/AppIcon-src.png 重新生成，不入库）
+assets/icon-1024.png
 *.spec
 !TranslatePopup.spec
 
@@ -30,3 +34,6 @@ installer/
 # 策略/调研文档 — 不进公开仓库，也绝不放进部署目录 docs/
 research/
 decisions.md
+
+# 软著申请资料 — 非代码，不进公开仓库
+软件著作权申请资料/

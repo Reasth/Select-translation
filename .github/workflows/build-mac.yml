@@ -42,7 +42,7 @@ jobs:
             sips -z $d $d build/icon-1024.png --out AppIcon.iconset/icon_${s}x${s}@2x.png
           done
           iconutil -c icns AppIcon.iconset -o build/AppIcon.icns
-          python make_ico.py
+          python scripts/make_ico.py
           ls -la build/
 
       - name: Build .app
