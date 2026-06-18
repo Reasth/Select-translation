@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import QPoint, QSize, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QColor, QPainter
+from PyQt6.QtGui import QColor, QGuiApplication, QPainter
 from PyQt6.QtWidgets import QWidget
 
 
@@ -37,6 +37,11 @@ class FloatingIcon(QWidget):
         gap_x = 4
         gap_y = self.SIZE + 4
         pos = QPoint(anchor_x + gap_x, anchor_y - gap_y)
+        screen = QGuiApplication.screenAt(QPoint(anchor_x, anchor_y)) or QGuiApplication.primaryScreen()
+        if screen is not None:
+            avail = screen.availableGeometry()
+            pos.setX(max(avail.left(), min(pos.x(), avail.right() - self.width())))
+            pos.setY(max(avail.top(), min(pos.y(), avail.bottom() - self.height())))
         self.move(pos)
         self.show()
         self._auto_hide.start(lifetime_ms)

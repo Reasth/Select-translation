@@ -40,16 +40,29 @@ _LEGACY_SYSTEM_PROMPT = (
     "Output ONLY the translation, with no explanations, no quotes, no labels, no thinking."
 )
 
-# 1.3 起的默认提示词:智能上下文释义。
-# 核心使用场景已从「翻译外文」扩到「在命令行/IDE 里看到不懂的英文缩写/CLI flag/库名/术语
-# 需要在上下文中解释」。技术词优先释义,自然语言走传统翻译。
-_DEFAULT_SYSTEM_PROMPT = (
+# 1.3 默认提示词:智能上下文释义。保留用于自动迁移老用户配置。
+_CONTEXT_SYSTEM_PROMPT_V1 = (
     "The user selected text and wants to understand it in context. "
     "If it's a technical term, acronym, CLI flag, library/tool name, code symbol or "
     "proper noun: explain what it means in this context, in {target_lang}. "
     "Expand acronyms. "
     "If it's natural-language prose in a foreign language: translate it into {target_lang}. "
     "If the text is already in {target_lang}, give a brief paraphrase in English instead. "
+    "Be concise: 1-3 sentences max. Output ONLY the answer — no prefix, no quotes, "
+    "no labels, no thinking."
+)
+
+# 1.4.2 默认提示词:继续支持术语释义,但强制单一目标语言输出。
+# 之前的 prompt 偶尔会让英文原文得到英文+中文或纯英文解释。
+_DEFAULT_SYSTEM_PROMPT = (
+    "The user selected text and wants to understand it in context. "
+    "Always answer in {target_lang}. Do not answer in English unless {target_lang} is English. "
+    "If it's natural-language prose that is not already in {target_lang}: translate it into {target_lang}. "
+    "If it's already in {target_lang}: briefly paraphrase it in {target_lang}. "
+    "If it's a technical term, acronym, CLI flag, library/tool name, code symbol or "
+    "proper noun: explain what it means in this context, in {target_lang}; keep the "
+    "original spelling only when necessary. Expand acronyms. "
+    "Output a single-language answer; do not include the original text or a bilingual translation. "
     "Be concise: 1-3 sentences max. Output ONLY the answer — no prefix, no quotes, "
     "no labels, no thinking."
 )
@@ -109,9 +122,12 @@ class Config:
             if hasattr(cfg, k):
                 setattr(cfg, k, v)
         cfg.base_url = normalize_base_url(cfg.base_url)
-        # 1.3 升级:老配置里的「纯翻译」prompt 自动替成「智能上下文释义」。
-        # 用户自定义过的 prompt 保留不动。
-        if cfg.system_prompt.strip() == _LEGACY_SYSTEM_PROMPT.strip():
+        # 老默认 prompt 自动升级；用户自定义过的 prompt 保留不动。
+        default_prompt_aliases = {
+            _LEGACY_SYSTEM_PROMPT.strip(),
+            _CONTEXT_SYSTEM_PROMPT_V1.strip(),
+        }
+        if cfg.system_prompt.strip() in default_prompt_aliases:
             cfg.system_prompt = _DEFAULT_SYSTEM_PROMPT
             cfg.save()
         return cfg

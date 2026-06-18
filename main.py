@@ -6,7 +6,7 @@ import threading
 import time
 import traceback
 
-from PyQt6.QtCore import QObject, QPoint, QTimer, pyqtSlot
+from PyQt6.QtCore import QLockFile, QObject, QPoint, QTimer, pyqtSlot
 from PyQt6.QtGui import QCursor, QGuiApplication
 from PyQt6.QtWidgets import QApplication
 
@@ -32,6 +32,9 @@ LOG_PATH = CONFIG_DIR / "app.log"
 
 # Eager 翻译最小长度。低于此长度认为是误选/单字光标停留,不预发请求,避免烧 token。
 EAGER_MIN_CHARS = 6
+EAGER_GRAB_TIMEOUT_MS = 350
+INFLIGHT_GRAB_WAIT_MS = 450
+CLICK_GRAB_TIMEOUT_MS = 1200
 
 
 def _install_logging() -> None:
@@ -201,6 +204,12 @@ class App(QObject):
     def _on_selection_finished(self, press_x: int, press_y: int, release_x: int, release_y: int):
         if not self.cfg.enabled:
             return
+        if self.popup.isVisible():
+            # 正在展示/流式追加翻译时,新的鼠标拖选可能只是用户在别处操作。
+            # 不要让它取消当前 eager worker,否则弹窗会停在已经收到的几个 token。
+            logging.info("selection ignored while popup visible")
+            self.telemetry.fire("selection_ignored", {"reason": "popup_visible"})
+            return
         right_x = max(press_x, release_x)
         top_y = min(press_y, release_y)
         ratio = QGuiApplication.primaryScreen().devicePixelRatio() or 1.0
@@ -237,7 +246,7 @@ class App(QObject):
         # 不强杀:杀一个还在 isRunning 的 QThread = 0xc0000409。
         # use_shift 用划词时采样的 _selection_terminal_fg(见 __init__ 注释),不再重探前台窗口。
         use_shift = sys.platform == "win32" and self._selection_terminal_fg
-        g = SelectionGrabber(use_shift=use_shift, timeout_ms=300, restore=True)
+        g = SelectionGrabber(use_shift=use_shift, timeout_ms=EAGER_GRAB_TIMEOUT_MS, restore=True)
         g.captured.connect(self._on_grab_captured)
         self._grabber = g
         g.start()
@@ -250,6 +259,10 @@ class App(QObject):
         self._grabber = None
         if not text:
             return
+        if self.popup.isVisible() and self._popup_consuming_text:
+            logging.info("grab ignored while popup is consuming eager")
+            self.telemetry.fire("selection_ignored", {"reason": "popup_consuming_eager"})
+            return
         self._cached_selection_text = text
         logging.info("cached selected text len=%s", len(text))
         self.telemetry.fire("selection_cached", {"len": len(text)})
@@ -260,6 +273,10 @@ class App(QObject):
     def _start_eager(self, text: str) -> None:
         """选中文本一就绪就发请求。失败/取消都吃掉,等用户点击时若仍未就绪则正常回退。"""
         if len(text) < EAGER_MIN_CHARS or len(text) > self.cfg.max_chars:
+            return
+        if self.popup.isVisible() and self._popup_consuming_text:
+            logging.info("new eager ignored while popup is consuming current eager")
+            self.telemetry.fire("eager_ignored", {"reason": "popup_consuming_eager"})
             return
         if self._eager_worker is not None and self._eager_text == text:
             return  # 同一段文本已经在跑
@@ -311,6 +328,8 @@ class App(QObject):
         # deleteLater 的)若有尾巴信号还在事件队列里,sender() ≠ 当前 self._eager_worker,直接丢。
         if self.sender() is not self._eager_worker:
             return
+        if not self._eager_buffer:
+            logging.info("eager first token received chars=%s", len(token))
         self._eager_buffer += token
         if self._popup_consuming_text == self._eager_text and self.popup.isVisible():
             self.popup.append_eager_token(token)
@@ -327,6 +346,12 @@ class App(QObject):
         if self._popup_consuming_text == self._eager_text and self.popup.isVisible():
             self.popup.mark_eager_done()
         dt_ms = int((time.monotonic() - self._eager_started_at) * 1000)
+        logging.info(
+            "eager completed chars=%s duration_ms=%s adopted=%s",
+            len(self._eager_buffer),
+            dt_ms,
+            self._popup_consuming_text == self._eager_text,
+        )
         self.telemetry.fire("eager_completed", {
             "chars": len(self._eager_buffer),
             "duration_ms": dt_ms,
@@ -357,7 +382,7 @@ class App(QObject):
             # 比再发一次 Ctrl+C 撞剪贴板靠谱。wait 返回时线程已死,deleteLater 尚未轮到。
             try:
                 if self._grabber.isRunning():
-                    self._grabber.wait(250)
+                    self._grabber.wait(INFLIGHT_GRAB_WAIT_MS)
                 text = self._grabber.text or ""
                 from_inflight = bool(text)
             except RuntimeError:
@@ -411,38 +436,49 @@ class App(QObject):
             self.telemetry.fire("translation_failed", {"reason": "no_text", "len": len(text)})
             return
         self._cached_selection_text = ""
-        if text == self._eager_text and self._eager_worker is not None:
-            # Eager 命中:接管已经在跑/已经完成的预翻译,buffer 立即显示,后续 token 继续追加
+        adopted_eager = False
+        if text == self._eager_text and self._eager_done and self._eager_buffer:
+            # 只复用已经完成的 eager。未完成的 eager 接管后容易被后续鼠标/选区事件打断,
+            # 造成弹窗停在首 token(常见为「这是」)。
             self._popup_consuming_text = text
             self.popup.present_eager(self._eager_buffer)
-            if self._eager_done:
-                self.popup.mark_eager_done()
-            logging.info("icon click adopted eager (buffered %s chars, done=%s)", len(self._eager_buffer), self._eager_done)
+            self.popup.mark_eager_done()
+            adopted_eager = True
+            logging.info("icon click adopted completed eager (buffered %s chars)", len(self._eager_buffer))
             self.telemetry.fire("eager_adopted", {
                 "buffered_chars": len(self._eager_buffer),
                 "eager_done": self._eager_done,
                 "text_len": len(text),
             })
         else:
-            # 没命中(文本变了/小于阈值/无 eager),走原路新发请求
+            if text == self._eager_text and self._eager_worker is not None:
+                logging.info(
+                    "icon click ignored unfinished eager; starting fresh click translation "
+                    "(buffered %s chars, done=%s)",
+                    len(self._eager_buffer),
+                    self._eager_done,
+                )
+                self._cancel_eager(reason="click_fresh_translation")
+            # 没有完整 eager 可复用,走正式点击翻译请求。可靠性优先于预翻译省下的几百毫秒。
             self._popup_consuming_text = ""
             self.popup.start_translation(text)
             self.telemetry.fire("translation_started", {
                 "text_len": len(text),
                 "eager_existed": self._eager_text != "",
                 "eager_text_mismatch": self._eager_text != "" and self._eager_text != text,
+                "fresh_click": True,
             })
         self.popup.reveal_at(anchor=bubble_anchor)
         self.telemetry.fire("popup_shown", {
             "engine": self.cfg.engine,
-            "adopted_eager": text == self._eager_text and self._eager_worker is not None,
+            "adopted_eager": adopted_eager,
         })
 
     def _start_click_grabber(self) -> None:
         # use_shift 用划词时采样的 _selection_terminal_fg:此刻 popup 已抢前台,再探测会失真。
         use_shift = sys.platform == "win32" and self._selection_terminal_fg
         # restore=False:click 时让选区文本留在剪贴板里(与用户主动 Ctrl+C 的语义一致)。
-        g = SelectionGrabber(use_shift=use_shift, timeout_ms=300, restore=False)
+        g = SelectionGrabber(use_shift=use_shift, timeout_ms=CLICK_GRAB_TIMEOUT_MS, restore=False)
         g.captured.connect(self._on_click_grab_captured)
         self._click_grabber = g
         g.start()
@@ -492,6 +528,11 @@ class App(QObject):
 def main():
     _install_logging()
     logging.info("translate-popup starting, log=%s", LOG_PATH)
+    lock = QLockFile(str(CONFIG_DIR / "app.lock"))
+    lock.setStaleLockTime(10_000)
+    if not lock.tryLock(100):
+        logging.info("another translate-popup instance is already running; exiting")
+        sys.exit(0)
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     holder = App()
