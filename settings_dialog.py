@@ -69,7 +69,7 @@ class SettingsDialog(QDialog):
         self.target_lang_combo.setEditable(True)
         self.target_lang_combo.addItems(COMMON_LANGS)
         self.target_lang_combo.setCurrentText(cfg.target_lang or "中文")
-        self.target_lang_combo.setToolTip("选中外文时翻成此语言；该语言原文则反向翻成英文。")
+        self.target_lang_combo.setToolTip("回答始终使用此语言；外文会先翻译再解释，本语言原文会直接解释含义。")
         common_form.addRow("目标语言", self.target_lang_combo)
         layout.addLayout(common_form)
 

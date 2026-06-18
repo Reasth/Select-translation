@@ -7,7 +7,7 @@ import time
 import traceback
 
 from PyQt6.QtCore import QLockFile, QObject, QPoint, QTimer, pyqtSlot
-from PyQt6.QtGui import QCursor, QGuiApplication
+from PyQt6.QtGui import QCursor
 from PyQt6.QtWidgets import QApplication
 
 from config import CONFIG_DIR, Config
@@ -210,14 +210,10 @@ class App(QObject):
             logging.info("selection ignored while popup visible")
             self.telemetry.fire("selection_ignored", {"reason": "popup_visible"})
             return
-        right_x = max(press_x, release_x)
-        top_y = min(press_y, release_y)
-        ratio = QGuiApplication.primaryScreen().devicePixelRatio() or 1.0
-        lx = int(right_x / ratio)
-        ly = int(top_y / ratio)
+        release_pos = QCursor.pos()
         self._cached_selection_text = ""
         # 主线程立刻 show:Qt 事件循环不再被剪贴板轮询卡 300ms,圆点画面没有黑窗。
-        self.icon.show_near_cursor(lx, ly, lifetime_ms=self.cfg.show_icon_ms)
+        self.icon.show_near_cursor(release_pos.x(), release_pos.y(), lifetime_ms=self.cfg.show_icon_ms)
         drag_px = max(abs(release_x - press_x), abs(release_y - press_y))
         terminal_fg = is_foreground_terminal()
         self._selection_terminal_fg = terminal_fg

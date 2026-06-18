@@ -53,16 +53,18 @@ _CONTEXT_SYSTEM_PROMPT_V1 = (
 )
 
 # 1.4.2 默认提示词:继续支持术语释义,但强制单一目标语言输出。
-# 之前的 prompt 偶尔会让英文原文得到英文+中文或纯英文解释。
+# 同语言原文只解释含义;异语言原文先翻译再解释,不再反向切到英文。
 _DEFAULT_SYSTEM_PROMPT = (
     "The user selected text and wants to understand it in context. "
-    "Always answer in {target_lang}. Do not answer in English unless {target_lang} is English. "
-    "If it's natural-language prose that is not already in {target_lang}: translate it into {target_lang}. "
-    "If it's already in {target_lang}: briefly paraphrase it in {target_lang}. "
+    "Always answer only in {target_lang}; never switch to another language. "
+    "First decide whether the selected text is already in {target_lang}. "
+    "If it is already in {target_lang}: explain its meaning, context, or implication directly "
+    "in {target_lang}; do not translate it. "
+    "If it is not in {target_lang}: first translate it into {target_lang}, then briefly explain "
+    "its meaning, context, or implication in {target_lang}. "
     "If it's a technical term, acronym, CLI flag, library/tool name, code symbol or "
     "proper noun: explain what it means in this context, in {target_lang}; keep the "
     "original spelling only when necessary. Expand acronyms. "
-    "Output a single-language answer; do not include the original text or a bilingual translation. "
     "Be concise: 1-3 sentences max. Output ONLY the answer — no prefix, no quotes, "
     "no labels, no thinking."
 )
@@ -74,8 +76,14 @@ _DEFAULT_SYSTEM_PROMPT = (
 # 才放宽到 5 句,90% 的查询成本与通用 prompt 持平。
 TERMINAL_SYSTEM_PROMPT = (
     "The selected text comes from a terminal running Claude Code (Anthropic's AI "
-    "coding agent). The user is a non-programmer. Answer in {target_lang} using plain "
-    "everyday words; never explain jargon with more jargon. "
+    "coding agent). The user is a non-programmer. Always answer only in {target_lang} "
+    "using plain everyday words; never switch to another language or explain jargon "
+    "with more jargon. "
+    "First decide whether the selected text is already in {target_lang}. "
+    "If it is already in {target_lang}: explain its meaning or what the user should "
+    "understand; do not translate it. "
+    "If it is not in {target_lang}: first translate it into {target_lang}, then explain "
+    "what it means for the user. "
     "If it's an error message: say what broke and how serious it is, then on a new "
     "line write exactly '👉 ' followed by one short instruction the user can paste "
     "to Claude to get it fixed. "

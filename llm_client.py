@@ -46,9 +46,8 @@ def _build_chat_payload(
     extra: Optional[dict] = None,
     terminal: bool = False,
 ) -> dict:
-    # 终端场景不做「中文原文→反向翻英文」:用户选中 Claude 的中文输出时要的是
-    # 中文解释这段话在说什么,而不是英文翻译。
-    actual_target = cfg.target_lang if terminal else resolve_target_lang(text, cfg.target_lang)
+    # 始终使用用户设置的目标语言;是否翻译由系统 prompt 根据原文语言决定。
+    actual_target = cfg.target_lang
     # 终端变体只在用户没自定义过 prompt 时启用——自定义过的是 power user,尊重其设置。
     system_prompt = cfg.system_prompt
     if terminal and cfg.system_prompt.strip() == _DEFAULT_SYSTEM_PROMPT.strip():

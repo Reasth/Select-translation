@@ -34,14 +34,12 @@ def test_filter_think_no_block_passes_through():
 
 def test_resolve_target_lang():
     from llm_client import resolve_target_lang
-    # 中文原文 + 默认目标是中文 → 反向翻译到英文
-    assert resolve_target_lang("你好世界", "中文") == "English"
-    assert resolve_target_lang("你好", "zh-CN") == "English"
-    # 英文原文 + 默认目标是中文 → 仍翻成中文
+
+    # 始终尊重用户设置的目标语言,不再根据原文语言反向翻成英文。
+    assert resolve_target_lang("你好世界", "中文") == "中文"
+    assert resolve_target_lang("你好", "zh-CN") == "zh-CN"
     assert resolve_target_lang("Hello world", "中文") == "中文"
-    # 中文原文 + 默认目标不是中文（比如日文） → 按用户设置
     assert resolve_target_lang("你好", "日本語") == "日本語"
-    # 纯符号 → 按用户设置
     assert resolve_target_lang("123 !!!", "中文") == "中文"
 
 
@@ -321,9 +319,23 @@ def test_default_prompt_forces_single_target_language():
     cfg = Config(target_lang="中文")
     p = _build_chat_payload(cfg, "This is a test.", model="m", stream=False)
     prompt = p["messages"][0]["content"]
-    assert "Always answer in 中文" in prompt
-    assert "Do not answer in English unless 中文 is English" in prompt
-    assert "do not include the original text or a bilingual translation" in prompt
+    assert "Always answer only in 中文" in prompt
+    assert "If it is already in 中文" in prompt
+    assert "do not translate it" in prompt
+    assert "If it is not in 中文" in prompt
+    assert "first translate it into 中文" in prompt
+    assert "then briefly explain" in prompt
+
+
+def test_payload_always_uses_configured_target_language():
+    from config import Config
+    from llm_client import _build_chat_payload
+
+    cfg = Config(target_lang="中文")
+    p = _build_chat_payload(cfg, "你好世界", model="m", stream=False)
+    prompt = p["messages"][0]["content"]
+    assert "Always answer only in 中文" in prompt
+    assert "English" not in prompt
 
 
 def test_selected_text_is_quoted_not_instruction():
@@ -463,6 +475,7 @@ def main():
         test_extract_claude_suggestion,
         test_terminal_prompt_payload,
         test_default_prompt_forces_single_target_language,
+        test_payload_always_uses_configured_target_language,
         test_selected_text_is_quoted_not_instruction,
         test_load_migrates_context_prompt_v1,
         test_hosted_falls_back_to_free_when_proxy_fails,

@@ -1,35 +1,14 @@
 """语言方向判断与语言码映射。
 
 单独成模块，避免 llm_client 与 engines 互相 import 形成环：
-- resolve_target_lang：根据原文与默认目标语言决定实际翻译方向（中→英反向）
+- resolve_target_lang：保留旧入口,现在始终尊重用户设置的目标语言
 - lang_to_code：把用户填的语言名（中文/English/日本語…）映射成翻译引擎用的语言码
 """
 from __future__ import annotations
 
 
-def _contains_cjk(text: str) -> bool:
-    for ch in text:
-        if "一" <= ch <= "鿿" or "぀" <= ch <= "ヿ":
-            return True
-    return False
-
-
-def _is_chinese_target(target: str) -> bool:
-    t = target.strip().lower()
-    return "中" in target or t in {
-        "zh",
-        "zh-cn",
-        "zh_cn",
-        "chinese",
-        "simplified chinese",
-        "chinese (simplified)",
-    }
-
-
 def resolve_target_lang(text: str, default_target: str) -> str:
-    """原文已是中/日且目标是中文时，反向翻成英文，避免“翻了等于没翻”。"""
-    if _contains_cjk(text) and _is_chinese_target(default_target):
-        return "English"
+    """返回用户设置的目标语言;不再根据原文语言反向切换。"""
     return default_target
 
 
