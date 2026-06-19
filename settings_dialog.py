@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QButtonGroup,
     QComboBox,
@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
 )
 
 from config import Config, normalize_base_url
-from llm_client import check_connection
+from llm_client import ConnectionCheckResult, check_connection
 
 
 PRESETS = {
@@ -52,10 +52,30 @@ COMMON_LANGS = [
 ]
 
 
+_LIVE_TEST_WORKERS: set["ConnectionTestWorker"] = set()
+
+
+class ConnectionTestWorker(QThread):
+    result_ready = pyqtSignal(object)
+
+    def __init__(self, cfg: Config):
+        super().__init__()
+        self.cfg = cfg
+        self.finished.connect(self.deleteLater)
+
+    def run(self) -> None:
+        try:
+            result = check_connection(self.cfg)
+        except Exception as e:  # noqa: BLE001 - show unexpected failures without freezing the UI
+            result = ConnectionCheckResult(False, f"测试失败：{e}")
+        self.result_ready.emit(result)
+
+
 class SettingsDialog(QDialog):
     def __init__(self, cfg: Config, parent=None):
         super().__init__(parent)
         self.cfg = cfg
+        self._test_worker: ConnectionTestWorker | None = None
         self.setWindowTitle("Select — 设置")
         self.setMinimumWidth(420)
 
@@ -219,14 +239,25 @@ class SettingsDialog(QDialog):
         )
 
     def _on_test_connection(self):
+        if self._test_worker is not None and self._test_worker.isRunning():
+            return
         self.test_button.setEnabled(False)
         self.test_button.setText("测试中...")
-        try:
-            result = check_connection(self._build_config_from_form())
-        finally:
-            self.test_button.setEnabled(True)
-            self.test_button.setText("测试连接")
+        worker = ConnectionTestWorker(self._build_config_from_form())
+        worker.result_ready.connect(self._on_test_connection_finished)
+        worker.finished.connect(self._on_test_worker_finished)
+        _LIVE_TEST_WORKERS.add(worker)
+        worker.finished.connect(lambda: _LIVE_TEST_WORKERS.discard(worker))
+        self._test_worker = worker
+        worker.start()
 
+    def _on_test_worker_finished(self):
+        if self.sender() is self._test_worker:
+            self._test_worker = None
+
+    def _on_test_connection_finished(self, result: ConnectionCheckResult):
+        self.test_button.setEnabled(True)
+        self.test_button.setText("测试连接")
         if result.ok:
             QMessageBox.information(self, "测试连接", result.message)
         else:

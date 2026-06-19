@@ -107,6 +107,63 @@ def test_pyinstaller_spec_pins_ssl_to_active_env():
     assert 'os.path.join(sys.prefix, "Library", "bin")' in spec
 
 
+def test_settings_connection_test_runs_off_main_thread():
+    import os
+    import threading
+    import time
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "windows")
+    from PyQt6.QtCore import QElapsedTimer
+    from PyQt6.QtWidgets import QApplication, QMessageBox
+
+    import settings_dialog
+    from config import Config
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    observed_off_main: list[bool] = []
+    dialogs: list[str] = []
+
+    original_check = settings_dialog.check_connection
+    original_info = QMessageBox.information
+    original_warning = QMessageBox.warning
+
+    def fake_check(cfg):
+        observed_off_main.append(threading.current_thread() is not threading.main_thread())
+        return settings_dialog.ConnectionCheckResult(True, "ok")
+
+    def fake_info(*args, **kwargs):
+        dialogs.append("info")
+        return QMessageBox.StandardButton.Ok
+
+    def fake_warning(*args, **kwargs):
+        dialogs.append("warning")
+        return QMessageBox.StandardButton.Ok
+
+    dlg = None
+    try:
+        settings_dialog.check_connection = fake_check
+        QMessageBox.information = fake_info
+        QMessageBox.warning = fake_warning
+        dlg = settings_dialog.SettingsDialog(Config())
+        timer = QElapsedTimer()
+        timer.start()
+        dlg._on_test_connection()
+        assert timer.elapsed() < 100, "test connection blocked the UI thread"
+        while not dialogs and timer.elapsed() < 2000:
+            app.processEvents()
+            time.sleep(0.01)
+        assert observed_off_main == [True], f"worker thread not used: {observed_off_main!r}"
+        assert dialogs == ["info"], f"result dialog not shown: {dialogs!r}"
+        assert dlg.test_button.isEnabled()
+        assert dlg.test_button.text() == "测试连接"
+    finally:
+        settings_dialog.check_connection = original_check
+        QMessageBox.information = original_info
+        QMessageBox.warning = original_warning
+        if dlg is not None and dlg._test_worker is not None and dlg._test_worker.isRunning():
+            dlg._test_worker.wait(2000)
+
+
 def test_resolve_endpoint_picks_hosted_constants():
     from config import Config, HOSTED_PROXY_BASE_URL, HOSTED_DEFAULT_MODEL
     from llm_client import _resolve_endpoint
@@ -490,6 +547,7 @@ def main():
         test_short_error_formats_json_message,
         test_https_support_is_available_for_packaging,
         test_pyinstaller_spec_pins_ssl_to_active_env,
+        test_settings_connection_test_runs_off_main_thread,
         test_resolve_endpoint_picks_hosted_constants,
         test_resolve_endpoint_ai_requires_key,
         test_clean_terminal_text,
