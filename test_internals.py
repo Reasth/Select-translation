@@ -100,6 +100,13 @@ def test_https_support_is_available_for_packaging():
     assert any(h.__class__.__name__ == "HTTPSHandler" for h in opener.handlers)
 
 
+def test_pyinstaller_spec_pins_ssl_to_active_env():
+    spec = open("TranslatePopup.spec", encoding="utf-8").read()
+    assert 'hiddenimports=["ssl", "_ssl"]' in spec
+    assert "def _prefer_env_library_bin" in spec
+    assert 'os.path.join(sys.prefix, "Library", "bin")' in spec
+
+
 def test_resolve_endpoint_picks_hosted_constants():
     from config import Config, HOSTED_PROXY_BASE_URL, HOSTED_DEFAULT_MODEL
     from llm_client import _resolve_endpoint
@@ -482,6 +489,7 @@ def main():
         test_engine_parse_fallback,
         test_short_error_formats_json_message,
         test_https_support_is_available_for_packaging,
+        test_pyinstaller_spec_pins_ssl_to_active_env,
         test_resolve_endpoint_picks_hosted_constants,
         test_resolve_endpoint_ai_requires_key,
         test_clean_terminal_text,

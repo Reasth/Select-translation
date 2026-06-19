@@ -38,6 +38,7 @@ _upx_exclude = [
     "Qt6Core.dll", "Qt6Gui.dll", "Qt6Widgets.dll",
 ]
 
+import os
 import sys
 
 a = Analysis(
@@ -93,7 +94,29 @@ def _prune(seq):
     return out
 
 
+def _prefer_env_library_bin(seq):
+    """Prefer DLLs from the Python env being packaged, not another conda on PATH."""
+    if sys.platform != "win32":
+        return seq
+    env_bin = os.path.join(sys.prefix, "Library", "bin")
+    if not os.path.isdir(env_bin):
+        return seq
+    out = []
+    for item in seq:
+        if len(item) < 3 or not item[1]:
+            out.append(item)
+            continue
+        base = os.path.basename(item[1])
+        replacement = os.path.join(env_bin, base)
+        if os.path.exists(replacement):
+            out.append((item[0], replacement, *item[2:]))
+        else:
+            out.append(item)
+    return out
+
+
 a.binaries = _prune(a.binaries)
+a.binaries = _prefer_env_library_bin(a.binaries)
 a.datas = _prune(a.datas)
 
 pyz = PYZ(a.pure)

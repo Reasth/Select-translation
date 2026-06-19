@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import threading
 import time
@@ -522,6 +523,8 @@ class App(QObject):
 
 
 def main():
+    if os.environ.get("TRANSLATE_POPUP_SMOKE_TEST") == "1":
+        return
     _install_logging()
     logging.info("translate-popup starting, log=%s", LOG_PATH)
     lock = QLockFile(str(CONFIG_DIR / "app.lock"))
