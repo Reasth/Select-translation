@@ -87,6 +87,19 @@ def test_short_error_formats_json_message():
     assert short_error(404, "Not Found").startswith("HTTP 404: Not Found")
 
 
+def test_https_support_is_available_for_packaging():
+    import http.client
+    import ssl
+    import urllib.request
+
+    import http_util  # noqa: F401 - keeps ssl visible to PyInstaller's analysis graph
+
+    assert ssl.OPENSSL_VERSION
+    assert hasattr(http.client, "HTTPSConnection")
+    opener = urllib.request.build_opener()
+    assert any(h.__class__.__name__ == "HTTPSHandler" for h in opener.handlers)
+
+
 def test_resolve_endpoint_picks_hosted_constants():
     from config import Config, HOSTED_PROXY_BASE_URL, HOSTED_DEFAULT_MODEL
     from llm_client import _resolve_endpoint
@@ -468,6 +481,7 @@ def main():
         test_engine_parse_primary,
         test_engine_parse_fallback,
         test_short_error_formats_json_message,
+        test_https_support_is_available_for_packaging,
         test_resolve_endpoint_picks_hosted_constants,
         test_resolve_endpoint_ai_requires_key,
         test_clean_terminal_text,

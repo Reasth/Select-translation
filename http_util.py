@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import ssl  # noqa: F401 - keep HTTPS support bundled in PyInstaller onefile builds
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
