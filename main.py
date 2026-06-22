@@ -19,7 +19,6 @@ from platform_backend import foreground_app, is_autostart, set_autostart
 from selection_monitor import (
     SelectionGrabber,
     SelectionMonitor,
-    grab_selected_text,
     is_foreground_terminal,
 )
 from terminal_context import clean_terminal_text, lookup_glossary
@@ -82,11 +81,10 @@ class App(QObject):
         self.tray = TrayController(enabled=self.cfg.enabled, autostart=is_autostart())
         self._suppress_next_close: bool = False
         self._cached_selection_text: str = ""
-        # 抓取选中文本的后台线程。从主线程下放出去 = 圆点立刻可见、Ctrl+C
-        # 不卡 Qt 事件循环。点击图标时若 grab 还在跑,主线程 wait 它一下即可。
+        # 点击蓝点后才抓取选中文本。划词结束只显示圆点,不再提前发 Ctrl+C,
+        # 避免用户只是划词查看/复制时被本应用改动剪贴板。
         self._grabber: SelectionGrabber | None = None
-        # 终端场景"点击时才抓"路径上的 grabber:popup 已经先显示了 loading,
-        # 这个 grabber 在后台把 Ctrl+Shift+C 发出去,选区清除被 popup 遮蔽。
+        # 点击路径上的 grabber:popup 已经先显示 loading,再后台发复制快捷键。
         self._click_grabber: SelectionGrabber | None = None
         self._click_anchor: QPoint | None = None
         # 划词那一刻前台是否终端。按产品假设「终端 = Claude Code 会话」,该标志决定
@@ -95,7 +93,7 @@ class App(QObject):
         self._selection_terminal_fg: bool = False
 
         # ---- Eager 翻译状态 ----
-        # 选中文本一就绪就预发请求,用户移鼠标→点圆点的几百毫秒里 API 已经在跑。
+        # 保留状态清理逻辑以兼容旧流程,但当前策略是不在点击蓝点前复制/预翻译。
         self._eager_text: str = ""           # 当前预翻译的原文（也用于过滤陈旧 worker 的信号）
         self._eager_buffer: str = ""         # 累计收到的可见 token
         self._eager_done: bool = False       # 预翻译是否完成
@@ -226,17 +224,8 @@ class App(QObject):
             "app_name": app_name,
             "window_title": win_title[:200],
         })
-        # 终端宿主(conhost / Windows Terminal / PowerShell / cmd)收 Ctrl+Shift+C 后
-        # **会清掉自己的选区**——这是宿主侧 copy 的默认设计,键盘合成绕不过去。
-        # eager 在终端里 = 帮用户在划完词那一瞬间取消选中,破坏「划词流畅度」红线。
-        # 改为:终端场景 NOT 起 eager,延迟到点击图标时再抓——选区的清除被 popup
-        # 弹出遮蔽,用户感知不到。代价:终端场景损失 ~200ms-1s 的 eager 提前量。
-        # 非终端场景 Ctrl+C 不动选区,继续走 eager 高速路。
-        # 后续可用 UIA TextPattern 把终端的 eager 也补回来(零键盘合成、零选区扰动)。
-        if not terminal_fg:
-            # 30ms 等源应用完成选区 commit,然后到后台线程里发 Ctrl+C + 轮询。
-            # 80→30 + 5ms 间隔 polling + 后台执行 = 划词到 eager 起 HTTP 的 e2e 从 ~380ms 压到 ~60ms。
-            QTimer.singleShot(30, self._kick_grab)
+        # Do not copy here. The selected text is grabbed only after the user clicks
+        # the blue dot, so a plain selection never changes the clipboard.
 
     def _kick_grab(self) -> None:
         # 旧 grabber 还在跑就丢引用,让它自然结束(captured 信号被 sender() != self._grabber 过滤掉)。
@@ -371,6 +360,10 @@ class App(QObject):
     def _on_icon_clicked(self):
         self._suppress_next_close = True
         bubble_anchor = self.icon.dot_center_global()
+        # Copying is only allowed after this click. Drop any legacy eager state so
+        # the click always drives the actual selection grab.
+        self._cached_selection_text = ""
+        self._grabber = None
         text = self._cached_selection_text
         from_cache = bool(text)
         from_inflight = False
@@ -401,7 +394,7 @@ class App(QObject):
         # 否则后台线程可能跑得太快,在 popup 还没真正可见时就发出 Ctrl+Shift+C,
         # 用户依然能瞥到「选区先没,popup 后到」的 50ms 缝隙。
         QTimer.singleShot(50, self._start_click_grabber)
-        logging.info("icon clicked, deferred grab scheduled (terminal path)")
+        logging.info("icon clicked, deferred grab scheduled")
         self.telemetry.fire("icon_clicked", {
             "text_len": 0,
             "from_cache": False,

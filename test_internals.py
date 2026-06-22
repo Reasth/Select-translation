@@ -476,6 +476,23 @@ def test_grab_restores_clipboard_when_no_selection():
     print(f"  grab returned: {result!r}, clipboard after: {after!r}")
 
 
+def test_selection_finished_does_not_copy_before_icon_click():
+    """Regression guard: selection end may show the dot, but must not copy."""
+    import inspect
+    from main import App
+
+    selection_source = inspect.getsource(App._on_selection_finished)
+    assert "_kick_grab" not in selection_source
+    assert "SelectionGrabber(" not in selection_source
+
+    click_source = inspect.getsource(App._on_icon_clicked)
+    reset_idx = click_source.find('self._cached_selection_text = ""')
+    read_idx = click_source.find("text = self._cached_selection_text")
+    click_grab_idx = click_source.find("QTimer.singleShot(50, self._start_click_grabber)")
+    assert 0 <= reset_idx < read_idx, "icon click should discard any pre-click cache"
+    assert click_grab_idx > read_idx, "icon click should schedule the real grab after click"
+
+
 def test_selection_grabber_runs_off_main_thread():
     """回归保护:grab_selected_text 一旦回到 Qt 主线程,圆点就会出现 ~300ms 黑窗,
     破坏「丝滑划词」红线。SelectionGrabber 必须在自己的 QThread 里跑剪贴板轮询。
@@ -563,6 +580,7 @@ def main():
         test_qthread_signal_to_qobject_bound_method_runs_on_main_thread,
         test_normalize_base_url_accepts_full_chat_endpoint,
         test_grab_restores_clipboard_when_no_selection,
+        test_selection_finished_does_not_copy_before_icon_click,
         test_selection_grabber_runs_off_main_thread,
         test_floating_icon_construct_and_position,
     ]
