@@ -52,7 +52,7 @@ function Get-GitHubToken {
         return $env:GITHUB_TOKEN
     }
 
-    $credentialInput = @("protocol=https", "host=github.com", "")
+    $credentialInput = @("protocol=https", "host=github.com", "username=$ExpectedGitHubLogin", "")
     $credential = $credentialInput | git credential fill
     if ($LASTEXITCODE -ne 0) {
         return ""
