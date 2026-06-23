@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from PyQt6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, QThread, QTimer, pyqtSignal
+from PyQt6.QtCore import QPoint, QPointF, QRectF, Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import (
     QColor,
     QCursor,
@@ -12,7 +12,7 @@ from PyQt6.QtGui import (
     QPainterPath,
     QShortcut,
 )
-from PyQt6.QtWidgets import QLabel, QFrame, QScrollArea, QWidget
+from PyQt6.QtWidgets import QLabel, QFrame, QTextBrowser, QWidget
 
 from llm_client import LLMClient
 from terminal_context import extract_claude_suggestion
@@ -145,30 +145,35 @@ class TranslationPopup(QWidget):
 
         self.card = BubbleFrame()
         self.card.setParent(self)
-        self.result_label = QLabel("", self.card)
+        self.result_label = QTextBrowser(self.card)
         self.result_label.setStyleSheet(
-            "QLabel { background: transparent; color: #111827; font-size: 13px; }"
+            "QTextBrowser { background: transparent; color: #111827; font-size: 13px; border: none; }"
+            "QTextBrowser > QWidget { background: transparent; }"
         )
-        self.result_label.setWordWrap(True)
-        self.result_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.result_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self.result_label.setReadOnly(True)
+        self.result_label.setOpenExternalLinks(False)
+        self.result_label.setOpenLinks(False)
+        self.result_label.setFrameShape(QFrame.Shape.NoFrame)
+        self.result_label.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.result_label.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.result_label.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.result_label.viewport().setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.result_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.TextSelectableByKeyboard
+        )
         self.result_label.setContentsMargins(0, 0, 0, 0)
-        self.result_label.setMargin(0)
-        self.result_label.setIndent(0)
-
-        self.text_area = QScrollArea(self.card)
-        self.text_area.setWidget(self.result_label)
-        self.text_area.setWidgetResizable(False)
-        self.text_area.setFrameShape(QFrame.Shape.NoFrame)
-        self.text_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.text_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.text_area.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.text_area.viewport().setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.text_area.setStyleSheet(
-            "QScrollArea { background: transparent; border: none; }"
-            "QScrollArea > QWidget > QWidget { background: transparent; }"
+        self.result_label.document().setDocumentMargin(0)
+        self.result_label.document().setDefaultStyleSheet(
+            "body { margin: 0; color: #111827; font-size: 13px; }"
+            "p { margin: 0 0 6px 0; }"
+            "ul, ol { margin-top: 0; margin-bottom: 6px; padding-left: 18px; }"
+            "li { margin: 0 0 2px 0; }"
+            "pre { margin: 4px 0; padding: 6px; background: #f3f4f6; border: 1px solid #e5e7eb; }"
+            "code { font-family: Consolas, 'Cascadia Mono', monospace; background: #f3f4f6; }"
+            "h1, h2, h3 { margin: 0 0 6px 0; font-weight: 600; }"
         )
-        self.text_area.hide()
+        self.result_label.hide()
 
         self.loading = LoadingDots()
         self.loading.setParent(self.card)
@@ -212,12 +217,18 @@ class TranslationPopup(QWidget):
         self.copy_label.setText("📋 复制给 Claude")
         self.copy_label.hide()
 
+    def _set_result_plain(self, text: str) -> None:
+        self.result_label.setPlainText(text)
+
+    def _set_result_markdown(self, text: str) -> None:
+        self.result_label.setMarkdown(text)
+
     def start_translation(self, text: str, *, terminal: bool = False) -> None:
         self.cancel_translation()
         self._set_terminal_mode(terminal)
         self._buffer = ""
-        self.result_label.setText("")
-        self.text_area.hide()
+        self._set_result_plain("")
+        self.result_label.hide()
         self._show_loading()
 
         self._worker = TranslateWorker(self.client, text, terminal=terminal)
@@ -230,9 +241,8 @@ class TranslationPopup(QWidget):
         self._set_terminal_mode(False)
         self._buffer = message
         self.loading.stop()
-        self.text_area.show()
         self.result_label.show()
-        self.result_label.setText(message)
+        self._set_result_plain(message)
         self._resize_to_text()
 
     def cancel_translation(self) -> None:
@@ -260,8 +270,8 @@ class TranslationPopup(QWidget):
         self.cancel_translation()
         self._set_terminal_mode(False)
         self._buffer = ""
-        self.result_label.setText("")
-        self.text_area.hide()
+        self._set_result_plain("")
+        self.result_label.hide()
         self._show_loading()
 
     def present_eager(self, buffer: str) -> None:
@@ -271,9 +281,8 @@ class TranslationPopup(QWidget):
         self._buffer = buffer
         if buffer:
             self.loading.stop()
-            self.text_area.show()
             self.result_label.show()
-            self.result_label.setText(buffer)
+            self._set_result_markdown(buffer)
             self._resize_to_text()
         else:
             self._show_loading()
@@ -300,14 +309,12 @@ class TranslationPopup(QWidget):
     def _append_token(self, token: str):
         if not self._buffer:
             self.loading.stop()
-            self.text_area.show()
             self.result_label.show()
         self._buffer += token
-        self.result_label.setText(self._buffer)
+        self._set_result_markdown(self._buffer)
         self._resize_to_text()
 
     def _show_loading(self):
-        self.text_area.hide()
         self.result_label.hide()
         content_w = self.loading.width()
         content_h = self.loading.height()
@@ -320,7 +327,7 @@ class TranslationPopup(QWidget):
         self.loading.start()
 
     def _resize_to_text(self):
-        text = self.result_label.text() or " "
+        text = self.result_label.toPlainText() or " "
         fm = self.result_label.fontMetrics()
         screen_point = self._anchor or self.frameGeometry().center() or QCursor.pos()
         screen = QGuiApplication.screenAt(screen_point) or QGuiApplication.primaryScreen()
@@ -331,15 +338,12 @@ class TranslationPopup(QWidget):
         )
         max_text_w = max(20, min(self._max_text_width, max_content_w))
 
-        wrap_flags = Qt.TextFlag.TextWordWrap
-        wrap_anywhere = getattr(Qt.TextFlag, "TextWrapAnywhere", None)
-        if wrap_anywhere is not None:
-            wrap_flags |= wrap_anywhere
-
         longest_line = max((fm.horizontalAdvance(line) for line in text.splitlines()), default=20)
-        text_w = min(max_text_w, max(20, longest_line))
-        rect = fm.boundingRect(QRect(0, 0, text_w, 10000), wrap_flags, text)
-        full_text_h = max(rect.height(), fm.height())
+        doc_text_w = min(max_text_w, max(20, longest_line))
+        doc = self.result_label.document()
+        doc.setDocumentMargin(0)
+        doc.setTextWidth(doc_text_w)
+        full_text_h = max(int(doc.size().height() + 0.999), fm.height())
 
         copy_h = 0
         copy_w = 0
@@ -354,24 +358,22 @@ class TranslationPopup(QWidget):
         )
         visible_text_h = min(full_text_h, max_text_h)
         needs_scroll = full_text_h > visible_text_h
-        scrollbar_w = self.text_area.verticalScrollBar().sizeHint().width() if needs_scroll else 0
-        if needs_scroll and text_w + scrollbar_w > max_content_w:
-            text_w = max(20, max_content_w - scrollbar_w)
-            rect = fm.boundingRect(QRect(0, 0, text_w, 10000), wrap_flags, text)
-            full_text_h = max(rect.height(), fm.height())
+        scrollbar_w = self.result_label.verticalScrollBar().sizeHint().width() if needs_scroll else 0
+        if needs_scroll and doc_text_w + scrollbar_w > max_content_w:
+            doc_text_w = max(20, max_content_w - scrollbar_w)
+            doc.setTextWidth(doc_text_w)
+            full_text_h = max(int(doc.size().height() + 0.999), fm.height())
             visible_text_h = min(full_text_h, max_text_h)
 
-        content_w = min(max_content_w, text_w + scrollbar_w)
+        content_w = min(max_content_w, doc_text_w + scrollbar_w)
         bubble_w = max(self.MIN_BUBBLE_WIDTH, content_w, copy_w) + self.PAD_H * 2
         bubble_h = visible_text_h + copy_h + self.PAD_V * 2
         card_w = BubbleFrame.TAIL_W + bubble_w
         card_h = bubble_h
 
         self._set_shell_size(card_w, card_h)
-        self.text_area.setFixedSize(content_w, visible_text_h)
-        self.text_area.move(BubbleFrame.TAIL_W + self.PAD_H, self.PAD_V)
-        self.result_label.setFixedSize(text_w, full_text_h)
-        self.result_label.move(0, 0)
+        self.result_label.setFixedSize(content_w, visible_text_h)
+        self.result_label.move(BubbleFrame.TAIL_W + self.PAD_H, self.PAD_V)
         if copy_h:
             self.copy_label.move(BubbleFrame.TAIL_W + self.PAD_H, self.PAD_V + visible_text_h + 6)
 

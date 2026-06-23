@@ -532,6 +532,74 @@ def test_selection_grabber_runs_off_main_thread():
     assert captured_text == ["captured"], f"captured signal not delivered: {captured_text!r}"
 
 
+def test_qtextbrowser_markdown_support_available():
+    from PyQt6.QtGui import QTextDocument
+    from PyQt6.QtWidgets import QTextBrowser
+
+    assert hasattr(QTextBrowser, "setMarkdown")
+    assert hasattr(QTextDocument, "setMarkdown")
+
+
+def test_translation_popup_streaming_markdown_renders_to_plain_text():
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PyQt6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    from translation_popup import TranslationPopup
+
+    popup = TranslationPopup(client=None)
+    try:
+        popup._append_token("**bo")
+        popup._append_token("ld**")
+        assert popup._buffer == "**bold**"
+        assert popup.result_label.toPlainText().strip() == "bold"
+        assert "**bold**" not in popup.result_label.toPlainText()
+    finally:
+        popup.hide()
+
+
+def test_translation_popup_plain_message_does_not_render_markdown():
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PyQt6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    from translation_popup import TranslationPopup
+
+    popup = TranslationPopup(client=None)
+    try:
+        popup.show_message("**text**")
+        assert popup.result_label.toPlainText().strip() == "**text**"
+    finally:
+        popup.hide()
+
+
+def test_translation_popup_markdown_blocks_resize_without_crashing():
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PyQt6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    from translation_popup import TranslationPopup
+
+    popup = TranslationPopup(client=None)
+    try:
+        popup.present_eager("**eager**")
+        assert popup.result_label.toPlainText().strip() == "eager"
+
+        popup.present_eager("- one\n- two\n\n```python\nprint('x')\n```")
+        popup._resize_to_text()
+        plain = popup.result_label.toPlainText()
+        assert "one" in plain
+        assert "print('x')" in plain
+    finally:
+        popup.hide()
+
+
 def test_floating_icon_construct_and_position():
     """构造圆点窗口、调用 show_near_cursor 不应崩溃，位置计算正确。"""
     import os
@@ -582,6 +650,10 @@ def main():
         test_grab_restores_clipboard_when_no_selection,
         test_selection_finished_does_not_copy_before_icon_click,
         test_selection_grabber_runs_off_main_thread,
+        test_qtextbrowser_markdown_support_available,
+        test_translation_popup_streaming_markdown_renders_to_plain_text,
+        test_translation_popup_plain_message_does_not_render_markdown,
+        test_translation_popup_markdown_blocks_resize_without_crashing,
         test_floating_icon_construct_and_position,
     ]
     failed = 0
